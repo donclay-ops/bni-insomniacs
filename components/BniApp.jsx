@@ -1713,10 +1713,27 @@ function FollowUpTab({ visitors, setVisitors }) {
 // ═══════════════════════════════════════════
 export default function App() {
   const [tab, setTab] = useState(0);
-  const [visitors, setVisitors] = useState(INITIAL_VISITORS);
-  const [asks, setAsks] = useState(INITIAL_ASKS);
-  const [members, setMembers] = useState(INITIAL_MEMBERS);
-  const [archived, setArchived] = useState([]);
+  const [visitors, setVisitors] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("bni_visitors")) || INITIAL_VISITORS; }
+    catch { return INITIAL_VISITORS; }
+  });
+  const [asks, setAsks] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("bni_asks")) || INITIAL_ASKS; }
+    catch { return INITIAL_ASKS; }
+  });
+  const [members, setMembers] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("bni_members")) || INITIAL_MEMBERS; }
+    catch { return INITIAL_MEMBERS; }
+  });
+  const [archived, setArchived] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("bni_archived")) || []; }
+    catch { return []; }
+  });
+
+  useEffect(() => { localStorage.setItem("bni_visitors", JSON.stringify(visitors)); }, [visitors]);
+  useEffect(() => { localStorage.setItem("bni_asks", JSON.stringify(asks)); }, [asks]);
+  useEffect(() => { localStorage.setItem("bni_members", JSON.stringify(members)); }, [members]);
+  useEffect(() => { localStorage.setItem("bni_archived", JSON.stringify(archived)); }, [archived]);
 
   const tabs = [
     <DashboardTab visitors={visitors} asks={asks} members={members} archived={archived} />,
