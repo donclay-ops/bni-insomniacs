@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef } from "react";
-import { supabase } from "../lib/supabase";
 
 // ═══════════════════════════════════════════
-// REAL MEMBER DATA - BNI INSOMNIACS
+// REAL MEMBER DATA - BNI INSOMNIACS  (now used as INITIAL state, editable)
 // ═══════════════════════════════════════════
-const MEMBERS = [
+const INITIAL_MEMBERS = [
   { id:1, name:"A Syeeduddin", category:"Retail & Wholesale", specialty:"Retail/Wholesale Specialist" },
   { id:2, name:"Abhaysingh Chawan", category:"Event & Business Service", specialty:"Event & Business-Service Specialist" },
   { id:3, name:"Akshat Jain", category:"Manufacturing", specialty:"Furniture Manufacture" },
@@ -96,7 +95,14 @@ const MEMBERS = [
   { id:89, name:"Zankhana Mistry", category:"Health & Wellness", specialty:"Health & Wellness Services" },
 ];
 
-const CATEGORIES = [...new Set(MEMBERS.map(m => m.category))].sort();
+// Master list of all known BNI categories so the user can pick from a sensible list
+const ALL_BNI_CATEGORIES = [
+  "Advertising & Marketing","Animals","Architecture & Engineering","Art & Entertainment","Automotives",
+  "Computer & Programming","Construction","Consulting","Education","Employment Activities",
+  "Event & Business Service","Finance & Insurance","Food & Beverage","Health & Wellness",
+  "Legal & Accounting","Manufacturing","Personal Services","Real Estate Services","Retail & Wholesale",
+  "Training & Coaching","Transport & Shipping","Travel"
+].sort();
 
 const INITIAL_ASKS = [
   { id: 1, memberId: 56, memberName: "Peter Rodrigues", askType: "specific_person", targetName: "Pallavi Dean", targetCompany: "Roar", targetCategory: "Architecture & Engineering", targetRole: "", notes: "Interior design project lead", date: "2026-03-10", status: "open" },
@@ -120,33 +126,16 @@ const STATUS_COLORS = {
 
 const INITIAL_VISITORS = [
   // ── Previous meetings ──
-  { id: 4, name: "David Chen", business: "IT Solutions Provider", phone: "+971 56 321 0987", email: "david@example.com", invitedBy: "Bhaskar Shah", status: "attended", callNotes: "Has 50+ business cards", category: "Computer & Programming", specialty: "IT Solutions", seatAssignment: "Next to Manoharan (Networks)", followUpResponse: "questions", date: "2026-03-10", bio: null },
-  { id: 5, name: "Amina Yusuf", business: "Legal Consultancy", phone: "+971 54 654 3210", email: "amina@example.com", invitedBy: "Emil Sunil George", status: "applied", callNotes: "Returning visitor, very engaged", category: "Legal & Accounting", specialty: "Corporate Law", seatAssignment: "Next to Mahrukh (IP Law)", followUpResponse: "ready", date: "2026-03-10", bio: null },
+  { id: 4, name: "David Chen", business: "IT Solutions Provider", phone: "+971 56 321 0987", email: "david@example.com", invitedBy: "Bhaskar Shah", status: "attended", callNotes: "Has 50+ business cards", category: "Computer & Programming", specialty: "IT Solutions", seatAssignment: "Next to Manoharan (Networks)", followUpResponse: "questions", date: "2026-03-10", bio: null, validation: null },
+  { id: 5, name: "Amina Yusuf", business: "Legal Consultancy", phone: "+971 54 654 3210", email: "amina@example.com", invitedBy: "Emil Sunil George", status: "applied", callNotes: "Returning visitor, very engaged", category: "Legal & Accounting", specialty: "Corporate Law", seatAssignment: "Next to Mahrukh (IP Law)", followUpResponse: "ready", date: "2026-03-10", bio: null, validation: null },
   // ── Tomorrow's meeting — 2026-04-08 ──
-  { id: 10, name: "Ram Bahin (Substitute)", business: "Paparazzi House", phone: "050 8500750", email: "Director@paparazzi.house", invitedBy: "Anand Bhaskar", status: "confirmed", callNotes: "Substitute visitor", category: "Training & Coaching", specialty: "Business Training / Coach", seatAssignment: "", followUpResponse: null, date: "2026-04-08", bio: null },
-  { id: 11, name: "Shahnawaz", business: "Dimos Café & Restaurant", phone: "055 8691155", email: "dimoscafeandrestaurant@gmail.com", invitedBy: "Ankita Rao", status: "called", callNotes: "Was busy. Details sent. Visit to be confirmed.", category: "Food & Beverage", specialty: "Restaurant / Café", seatAssignment: "", followUpResponse: null, date: "2026-04-08", bio: null },
-  { id: 12, name: "Kapardhi Dhavala", business: "Property Maintainace", phone: "056 6817669", email: "kapardhi.dhavala@spacemanager.ae", invitedBy: "Ankita Rao", status: "registered", callNotes: "No. not reachable — Ankita informed.", category: "Construction", specialty: "Property Maintenance", seatAssignment: "", followUpResponse: null, date: "2026-04-08", bio: null },
-  { id: 13, name: "Kevin Monteiro", business: "Voxtel Communication", phone: "055 1226166", email: "kevin@voxtelme.com", invitedBy: "", status: "registered", callNotes: "No. not reachable or constantly busy.", category: "Computer & Programming", specialty: "IT Consultants / Communication", seatAssignment: "", followUpResponse: null, date: "2026-04-08", bio: null },
-  { id: 14, name: "Varaprasad SN", business: "Optculture", phone: "052 9045457", email: "varaprasad@optculture.com", invitedBy: "Madhu Pallath", status: "confirmed", callNotes: "Confirmed. Details sent.", category: "Advertising & Marketing", specialty: "Customer Loyalty & Engagement", seatAssignment: "", followUpResponse: null, date: "2026-04-08", bio: null },
-  { id: 15, name: "Kanchan", business: "KLIPIT", phone: "052 254 6953", email: "kanchan.magaji@klipit.co", invitedBy: "Madhu Pallath", status: "registered", callNotes: "No. not reachable. Madhu informed.", category: "Advertising & Marketing", specialty: "Digital Reimbursement Platform", seatAssignment: "", followUpResponse: null, date: "2026-04-08", bio: null },
+  { id: 10, name: "Ram Bahin (Substitute)", business: "Paparazzi House", phone: "050 8500750", email: "Director@paparazzi.house", invitedBy: "Anand Bhaskar", status: "confirmed", callNotes: "Substitute visitor", category: "Training & Coaching", specialty: "Business Training / Coach", seatAssignment: "", followUpResponse: null, date: "2026-04-08", bio: null, validation: null },
+  { id: 11, name: "Shahnawaz", business: "Dimos Café & Restaurant", phone: "055 8691155", email: "dimoscafeandrestaurant@gmail.com", invitedBy: "Ankita Rao", status: "called", callNotes: "Was busy. Details sent. Visit to be confirmed.", category: "Food & Beverage", specialty: "Restaurant / Café", seatAssignment: "", followUpResponse: null, date: "2026-04-08", bio: null, validation: null },
+  { id: 12, name: "Kapardhi Dhavala", business: "Property Maintainace", phone: "056 6817669", email: "kapardhi.dhavala@spacemanager.ae", invitedBy: "Ankita Rao", status: "registered", callNotes: "No. not reachable — Ankita informed.", category: "Construction", specialty: "Property Maintenance", seatAssignment: "", followUpResponse: null, date: "2026-04-08", bio: null, validation: null },
+  { id: 13, name: "Kevin Monteiro", business: "Voxtel Communication", phone: "055 1226166", email: "kevin@voxtelme.com", invitedBy: "", status: "registered", callNotes: "No. not reachable or constantly busy.", category: "Computer & Programming", specialty: "IT Consultants / Communication", seatAssignment: "", followUpResponse: null, date: "2026-04-08", bio: null, validation: null },
+  { id: 14, name: "Varaprasad SN", business: "Optculture", phone: "052 9045457", email: "varaprasad@optculture.com", invitedBy: "Madhu Pallath", status: "confirmed", callNotes: "Confirmed. Details sent.", category: "Advertising & Marketing", specialty: "Customer Loyalty & Engagement", seatAssignment: "", followUpResponse: null, date: "2026-04-08", bio: null, validation: null },
+  { id: 15, name: "Kanchan", business: "KLIPIT", phone: "052 254 6953", email: "kanchan.magaji@klipit.co", invitedBy: "Madhu Pallath", status: "registered", callNotes: "No. not reachable. Madhu informed.", category: "Advertising & Marketing", specialty: "Digital Reimbursement Platform", seatAssignment: "", followUpResponse: null, date: "2026-04-08", bio: null, validation: null },
 ];
-
-const PRINT_STYLE = `
-@media print {
-  body * { visibility: hidden !important; }
-  #bni-print-area, #bni-print-area * { visibility: visible !important; }
-  #bni-print-area {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100% !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    background: #fff !important;
-    z-index: 99999 !important;
-  }
-  @page { size: A4 landscape; margin: 12mm 14mm; }
-}
-`;
 
 // ═══════════════════════════════════════════
 // AI MATCHING ENGINE
@@ -209,8 +198,25 @@ function StatCard({ label, value, sub, color }) {
   </Card>;
 }
 
+// Confirmation modal — reused for delete actions
+function ConfirmModal({ open, title, message, confirmLabel = "Delete", cancelLabel = "Cancel", danger = true, onConfirm, onCancel }) {
+  if (!open) return null;
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.55)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: "#fff", borderRadius: 14, padding: 22, maxWidth: 420, width: "100%", boxShadow: "0 20px 50px rgba(0,0,0,0.3)" }}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: danger ? "#991B1B" : "#1B2A4A", marginBottom: 8 }}>{title}</div>
+        <div style={{ fontSize: 13, color: "#374151", lineHeight: 1.6, marginBottom: 16 }}>{message}</div>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button onClick={onCancel} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #D1D5DB", background: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", color: "#374151" }}>{cancelLabel}</button>
+          <button onClick={onConfirm} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: danger ? "#8B1A1A" : "#1B2A4A", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════
-// AI VISITOR INTELLIGENCE COMPONENT
+// AI VISITOR INTELLIGENCE COMPONENT  (briefing card — unchanged from v1)
 // ═══════════════════════════════════════════
 function VisitorIntelligence({ visitor, onBioSaved }) {
   const [loading, setLoading] = useState(false);
@@ -285,11 +291,7 @@ Write a briefing in this exact JSON structure (no markdown, pure JSON):
 
   return (
     <div style={{ marginTop: 10 }}>
-      <div style={{
-        background: "linear-gradient(135deg, #0F172A 0%, #1B2A4A 50%, #2D1515 100%)",
-        borderRadius: 10, padding: 14, color: "#fff"
-      }}>
-        {/* Header */}
+      <div style={{ background: "linear-gradient(135deg, #0F172A 0%, #1B2A4A 50%, #2D1515 100%)", borderRadius: 10, padding: 14, color: "#fff" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 800, color: "#fff", letterSpacing: -0.3 }}>✦ VIP Intelligence Briefing</div>
@@ -297,14 +299,10 @@ Write a briefing in this exact JSON structure (no markdown, pure JSON):
           </div>
           <button onClick={() => { setBio(null); }} style={{ background: "rgba(255,255,255,0.1)", border: "none", borderRadius: 6, padding: "3px 8px", fontSize: 10, color: "#94A3B8", cursor: "pointer" }}>↺ Refresh</button>
         </div>
-
-        {/* Business snapshot */}
         <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 8, padding: 10, marginBottom: 8 }}>
           <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#64748B", marginBottom: 4 }}>Business Snapshot</div>
           <div style={{ fontSize: 11, color: "#CBD5E1", lineHeight: 1.6 }}>{bio.businessSnapshot}</div>
         </div>
-
-        {/* Two column: What they need + Why BNI */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
           <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 8, padding: 10 }}>
             <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#64748B", marginBottom: 4 }}>What They Need</div>
@@ -315,8 +313,6 @@ Write a briefing in this exact JSON structure (no markdown, pure JSON):
             <div style={{ fontSize: 11, color: "#CBD5E1", lineHeight: 1.5 }}>{bio.whyBNI}</div>
           </div>
         </div>
-
-        {/* Conversation starters */}
         <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 8, padding: 10, marginBottom: 8 }}>
           <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#64748B", marginBottom: 6 }}>💬 Conversation Starters</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -328,14 +324,10 @@ Write a briefing in this exact JSON structure (no markdown, pure JSON):
             ))}
           </div>
         </div>
-
-        {/* Intro script — highlighted */}
         <div style={{ background: "rgba(139,26,26,0.25)", border: "1px solid rgba(139,26,26,0.4)", borderRadius: 8, padding: 10, marginBottom: 8 }}>
           <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#F87171", marginBottom: 4 }}>🎤 Introduction Script</div>
           <div style={{ fontSize: 12, color: "#fff", lineHeight: 1.6, fontStyle: "italic" }}>"{bio.introScript}"</div>
         </div>
-
-        {/* LinkedIn tip */}
         <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
           <span style={{ fontSize: 10, color: "#60A5FA", flexShrink: 0 }}>🔍</span>
           <div style={{ fontSize: 10, color: "#60A5FA", lineHeight: 1.5 }}><strong>Research tip:</strong> {bio.linkedinTip}</div>
@@ -346,62 +338,243 @@ Write a briefing in this exact JSON structure (no markdown, pure JSON):
 }
 
 // ═══════════════════════════════════════════
-// SEAT PLANNER COMPONENT
+// NEW: AI VISITOR VALIDATION COMPONENT
+// Checks suitability — category conflicts with current members, red flags, fit score
 // ═══════════════════════════════════════════
-function SeatPlanner({ visitors, asks }) {
+function VisitorValidation({ visitor, members, onValidationSaved }) {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(visitor.validation || null);
+  const [error, setError] = useState(null);
+
+  const validate = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Build a snapshot of current members in the visitor's category — this is the conflict check
+      const sameCategoryMembers = members
+        .filter(m => m.category.toLowerCase() === (visitor.category || "").toLowerCase())
+        .map(m => `${m.name} — ${m.specialty}`);
+
+      const allCategoriesInChapter = [...new Set(members.map(m => m.category))].sort();
+
+      const prompt = `You are the BNI Insomniacs Dubai Membership Committee assistant. Your job is to validate whether a prospective visitor is a SUITABLE FIT for the chapter, based on BNI's "one person per professional classification" rule and general chapter health.
+
+VISITOR DETAILS:
+- Name: ${visitor.name}
+- Business: ${visitor.business}
+- Category: ${visitor.category || "NOT SPECIFIED"}
+- Specialty / Classification: ${visitor.specialty || "NOT SPECIFIED"}
+- Invited by: ${visitor.invitedBy || "walk-in (not invited)"}
+- Phone: ${visitor.phone || "not provided"}
+- Email: ${visitor.email || "not provided"}
+- Notes from intake call: ${visitor.callNotes || "none"}
+
+CURRENT CHAPTER MEMBERS IN VISITOR'S CATEGORY (potential conflicts):
+${sameCategoryMembers.length > 0 ? sameCategoryMembers.join("\n") : "(none — category is OPEN in the chapter)"}
+
+ALL CATEGORIES PRESENT IN CHAPTER:
+${allCategoriesInChapter.join(", ")}
+
+Evaluate the visitor and return ONLY valid JSON in this exact structure (no markdown, no code fences):
+{
+  "verdict": "GREEN" | "AMBER" | "RED",
+  "fitScore": <number 0-100>,
+  "headline": "One short sentence summarising the verdict",
+  "classificationCheck": {
+    "status": "OPEN" | "CONFLICT" | "OVERLAP_RISK",
+    "explanation": "Specific explanation. If OPEN, say no member currently holds this classification. If CONFLICT, name the member(s) who already hold it. If OVERLAP_RISK, explain the partial overlap and how it might be resolved (e.g., narrowing the specialty)."
+  },
+  "strengths": ["specific positive 1", "specific positive 2", "specific positive 3"],
+  "concerns": ["specific concern 1 if any", "specific concern 2 if any"],
+  "redFlags": ["actual red flags only — leave empty array if none"],
+  "referralPotential": "Realistic 1-2 sentence assessment of how much referral business this visitor's category could generate FROM and TO the existing chapter members",
+  "recommendation": "One of: 'Strongly recommend inviting back', 'Recommend inviting back', 'Invite back with caution — discuss classification first', 'Do not invite back', 'Needs more information'",
+  "nextSteps": ["specific action 1 for the Visitor Host or Membership Committee", "specific action 2"]
+}
+
+Be honest and specific. If information is missing (no category, no business name, no inviter), flag it. If there is a clear classification conflict with an existing member, the verdict must be RED or AMBER — never GREEN.`;
+
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1200,
+          messages: [{ role: "user", content: prompt }]
+        })
+      });
+      const data = await response.json();
+      const text = data.content?.[0]?.text || "";
+      const clean = text.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(clean);
+      setResult(parsed);
+      onValidationSaved(visitor.id, parsed);
+    } catch (e) {
+      setError("Could not validate. Please try again.");
+    }
+    setLoading(false);
+  };
+
+  const verdictStyle = (v) => {
+    if (v === "GREEN") return { bg: "#D1FAE5", border: "#10B981", text: "#065F46", icon: "✅" };
+    if (v === "AMBER") return { bg: "#FEF3C7", border: "#F59E0B", text: "#92400E", icon: "⚠️" };
+    if (v === "RED") return { bg: "#FEE2E2", border: "#EF4444", text: "#991B1B", icon: "🛑" };
+    return { bg: "#F3F4F6", border: "#9CA3AF", text: "#374151", icon: "❓" };
+  };
+
+  if (!result && !loading) return (
+    <button onClick={validate} style={{
+      background: "linear-gradient(135deg, #047857, #065F46)", color: "#fff",
+      border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 12,
+      fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6
+    }}>
+      🛡️ Validate Visitor Fit
+    </button>
+  );
+
+  if (loading) return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#065F46", fontSize: 12, padding: "8px 0" }}>
+      <div style={{ width: 16, height: 16, border: "2px solid #047857", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      Validating fit against chapter…
+    </div>
+  );
+
+  if (error) return <div style={{ color: "#991B1B", fontSize: 12 }}>{error} <button onClick={validate} style={{ textDecoration: "underline", background: "none", border: "none", cursor: "pointer", color: "#991B1B" }}>Retry</button></div>;
+
+  const vs = verdictStyle(result.verdict);
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ background: vs.bg, border: `2px solid ${vs.border}`, borderRadius: 12, padding: 14 }}>
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+              <span style={{ fontSize: 18 }}>{vs.icon}</span>
+              <span style={{ fontSize: 14, fontWeight: 900, color: vs.text, letterSpacing: -0.3 }}>
+                Verdict: {result.verdict}
+              </span>
+              <span style={{ background: "#fff", color: vs.text, fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 12, border: `1px solid ${vs.border}` }}>
+                Fit Score: {result.fitScore}/100
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: vs.text, lineHeight: 1.5, fontWeight: 600 }}>{result.headline}</div>
+          </div>
+          <button onClick={() => { setResult(null); onValidationSaved(visitor.id, null); }} style={{ background: "#fff", border: `1px solid ${vs.border}`, borderRadius: 6, padding: "3px 8px", fontSize: 10, color: vs.text, cursor: "pointer", flexShrink: 0 }}>↺ Re-run</button>
+        </div>
+
+        {/* Classification check — most important block */}
+        <div style={{ background: "#fff", borderRadius: 8, padding: 10, marginBottom: 8, borderLeft: `4px solid ${vs.border}` }}>
+          <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#6B7280", marginBottom: 4, fontWeight: 700 }}>Classification Check</div>
+          <div style={{ fontSize: 12, fontWeight: 800, color: result.classificationCheck?.status === "OPEN" ? "#065F46" : result.classificationCheck?.status === "CONFLICT" ? "#991B1B" : "#92400E", marginBottom: 3 }}>
+            {result.classificationCheck?.status === "OPEN" && "✓ Category is OPEN"}
+            {result.classificationCheck?.status === "CONFLICT" && "✗ CONFLICT with existing member"}
+            {result.classificationCheck?.status === "OVERLAP_RISK" && "⚠ Overlap risk"}
+          </div>
+          <div style={{ fontSize: 11, color: "#374151", lineHeight: 1.6 }}>{result.classificationCheck?.explanation}</div>
+        </div>
+
+        {/* Two-column: Strengths + Concerns */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+          <div style={{ background: "#fff", borderRadius: 8, padding: 10 }}>
+            <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#065F46", marginBottom: 4, fontWeight: 700 }}>👍 Strengths</div>
+            {result.strengths?.length > 0 ? result.strengths.map((s, i) => (
+              <div key={i} style={{ fontSize: 11, color: "#374151", lineHeight: 1.5, marginBottom: 3, display: "flex", gap: 5 }}>
+                <span style={{ color: "#10B981", fontWeight: 800 }}>+</span><span>{s}</span>
+              </div>
+            )) : <div style={{ fontSize: 11, color: "#9CA3AF" }}>—</div>}
+          </div>
+          <div style={{ background: "#fff", borderRadius: 8, padding: 10 }}>
+            <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#92400E", marginBottom: 4, fontWeight: 700 }}>⚠ Concerns</div>
+            {result.concerns?.length > 0 ? result.concerns.map((c, i) => (
+              <div key={i} style={{ fontSize: 11, color: "#374151", lineHeight: 1.5, marginBottom: 3, display: "flex", gap: 5 }}>
+                <span style={{ color: "#F59E0B", fontWeight: 800 }}>!</span><span>{c}</span>
+              </div>
+            )) : <div style={{ fontSize: 11, color: "#9CA3AF" }}>None flagged</div>}
+          </div>
+        </div>
+
+        {/* Red flags — only if any */}
+        {result.redFlags?.length > 0 && (
+          <div style={{ background: "#fff", border: "1px solid #EF4444", borderRadius: 8, padding: 10, marginBottom: 8 }}>
+            <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#991B1B", marginBottom: 4, fontWeight: 700 }}>🚩 Red Flags</div>
+            {result.redFlags.map((rf, i) => (
+              <div key={i} style={{ fontSize: 11, color: "#991B1B", lineHeight: 1.5, marginBottom: 2 }}>• {rf}</div>
+            ))}
+          </div>
+        )}
+
+        {/* Referral potential */}
+        <div style={{ background: "#fff", borderRadius: 8, padding: 10, marginBottom: 8 }}>
+          <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#6B7280", marginBottom: 4, fontWeight: 700 }}>💼 Referral Potential</div>
+          <div style={{ fontSize: 11, color: "#374151", lineHeight: 1.6 }}>{result.referralPotential}</div>
+        </div>
+
+        {/* Recommendation — highlighted */}
+        <div style={{ background: vs.text, color: "#fff", borderRadius: 8, padding: 10, marginBottom: 8 }}>
+          <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "rgba(255,255,255,0.7)", marginBottom: 3, fontWeight: 700 }}>📋 Recommendation</div>
+          <div style={{ fontSize: 13, fontWeight: 800, lineHeight: 1.5 }}>{result.recommendation}</div>
+        </div>
+
+        {/* Next steps */}
+        <div style={{ background: "#fff", borderRadius: 8, padding: 10 }}>
+          <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#6B7280", marginBottom: 4, fontWeight: 700 }}>👉 Next Steps</div>
+          {result.nextSteps?.map((ns, i) => (
+            <div key={i} style={{ fontSize: 11, color: "#374151", lineHeight: 1.5, marginBottom: 3, display: "flex", gap: 5 }}>
+              <span style={{ color: vs.border, fontWeight: 800 }}>{i + 1}.</span><span>{ns}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════
+// SEAT PLANNER COMPONENT  (unchanged from v1, takes members as prop now)
+// ═══════════════════════════════════════════
+function SeatPlanner({ visitors, asks, members }) {
   const meetingVisitors = visitors.filter(v => v.date === "2026-04-08");
   const [seats, setSeats] = useState(() => {
-    // Auto-assign visitors to the 6 visitor seats based on best matches
     const assigned = {};
-    meetingVisitors.slice(0, 6).forEach((v, i) => {
-      assigned[`V${i + 1}`] = v.id;
-    });
+    meetingVisitors.slice(0, 6).forEach((v, i) => { assigned[`V${i + 1}`] = v.id; });
     return assigned;
   });
   const [dragging, setDragging] = useState(null);
   const [hovering, setHovering] = useState(null);
 
   const autoAssign = () => {
-    // Smart assignment: group visitors by category affinity with member neighbors
     const memberSeats = {
-      M1: MEMBERS.find(m => m.category === "Finance & Insurance"),
-      M2: MEMBERS.find(m => m.category === "Legal & Accounting"),
-      M3: MEMBERS.find(m => m.category === "Advertising & Marketing"),
-      M4: MEMBERS.find(m => m.category === "Construction"),
-      M5: MEMBERS.find(m => m.category === "Health & Wellness"),
-      M6: MEMBERS.find(m => m.category === "Real Estate Services"),
+      M1: members.find(m => m.category === "Finance & Insurance"),
+      M2: members.find(m => m.category === "Legal & Accounting"),
+      M3: members.find(m => m.category === "Advertising & Marketing"),
+      M4: members.find(m => m.category === "Construction"),
+      M5: members.find(m => m.category === "Health & Wellness"),
+      M6: members.find(m => m.category === "Real Estate Services"),
     };
-
     const newSeats = {};
     const assigned = new Set();
-
-    // For each visitor seat, find best visitor to match adjacent members
     ["V1","V2","V3","V4","V5","V6"].forEach((seatKey, i) => {
       const adjacentMember = Object.values(memberSeats)[i];
       if (!adjacentMember) return;
-
       let bestVisitor = null;
       let bestScore = -1;
-
       meetingVisitors.forEach(v => {
         if (assigned.has(v.id)) return;
-        const matches = findMatches(v, asks, MEMBERS);
+        const matches = findMatches(v, asks, members);
         const memberMatch = matches.find(m => m.member?.id === adjacentMember.id);
         const catMatch = v.category === adjacentMember.category ? 60 : 0;
         const score = (memberMatch?.score || 0) + catMatch;
         if (score > bestScore) { bestScore = score; bestVisitor = v; }
       });
-
       if (!bestVisitor && meetingVisitors.length > 0) {
         bestVisitor = meetingVisitors.find(v => !assigned.has(v.id)) || null;
       }
-
       if (bestVisitor) {
         newSeats[seatKey] = bestVisitor.id;
         assigned.add(bestVisitor.id);
       }
     });
-
     setSeats(newSeats);
   };
 
@@ -409,7 +582,6 @@ function SeatPlanner({ visitors, asks }) {
     if (!dragging) return;
     setSeats(prev => {
       const next = { ...prev };
-      // Find if dragging visitor is already seated
       const fromSeat = Object.entries(next).find(([, vid]) => vid === dragging)?.[0];
       const displaced = next[targetSeat];
       if (fromSeat) next[fromSeat] = displaced || null;
@@ -423,124 +595,59 @@ function SeatPlanner({ visitors, asks }) {
   const getVisitor = (seatKey) => meetingVisitors.find(v => v.id === seats[seatKey]);
   const unassigned = meetingVisitors.filter(v => !Object.values(seats).includes(v.id));
 
-  // Category color mapping
   const catColor = (cat) => {
     const map = {
-      "Finance & Insurance": "#1D4ED8",
-      "Legal & Accounting": "#7C3AED",
-      "Advertising & Marketing": "#D97706",
-      "Construction": "#B45309",
-      "Health & Wellness": "#059669",
-      "Real Estate Services": "#0891B2",
-      "Computer & Programming": "#6D28D9",
-      "Transport & Shipping": "#374151",
-      "Consulting": "#7C3AED",
-      "Event & Business Service": "#BE185D",
-      "Training & Coaching": "#15803D",
-      "Travel": "#0369A1",
-      "Food & Beverage": "#B91C1C",
-      "Retail & Wholesale": "#92400E",
-      "Architecture & Engineering": "#0F766E",
-      "Manufacturing": "#6B21A8",
-      "Personal Services": "#BE185D",
-      "Automotives": "#374151",
-      "Employment Activities": "#1E40AF",
+      "Finance & Insurance": "#1D4ED8","Legal & Accounting": "#7C3AED","Advertising & Marketing": "#D97706",
+      "Construction": "#B45309","Health & Wellness": "#059669","Real Estate Services": "#0891B2",
+      "Computer & Programming": "#6D28D9","Transport & Shipping": "#374151","Consulting": "#7C3AED",
+      "Event & Business Service": "#BE185D","Training & Coaching": "#15803D","Travel": "#0369A1",
+      "Food & Beverage": "#B91C1C","Retail & Wholesale": "#92400E","Architecture & Engineering": "#0F766E",
+      "Manufacturing": "#6B21A8","Personal Services": "#BE185D","Automotives": "#374151","Employment Activities": "#1E40AF",
     };
     return map[cat] || "#6B7280";
   };
 
-  // The room layout — U-shape
-  // Inner U visitor row: V1–V6 (6 seats across the bottom inside of the U)
-  // Outer U member row: M1–M10 around the sides + bottom outer
-  
   const visitorSeats = ["V1","V2","V3","V4","V5","V6"];
-  
-  // Select 10 representative members for the illustration
   const displayMembers = [
-    MEMBERS.find(m => m.specialty === "Wealth Management"),
-    MEMBERS.find(m => m.specialty === "Residential Mortgages"),
-    MEMBERS.find(m => m.specialty === "General Insurance including Employee Benefits"),
-    MEMBERS.find(m => m.specialty === "Commercial Real Estate"),
-    MEMBERS.find(m => m.specialty === "Architect"),
-    MEMBERS.find(m => m.specialty === "Social Media"),
-    MEMBERS.find(m => m.specialty === "Search Engine Optimisation"),
-    MEMBERS.find(m => m.specialty === "Commercial/Retail Interior Design & Fitout"),
-    MEMBERS.find(m => m.specialty === "Builder/General Contractor"),
-    MEMBERS.find(m => m.specialty === "Construction Specialist"),
+    members.find(m => m.specialty === "Wealth Management"),
+    members.find(m => m.specialty === "Residential Mortgages"),
+    members.find(m => m.specialty === "General Insurance including Employee Benefits"),
+    members.find(m => m.specialty === "Commercial Real Estate"),
+    members.find(m => m.specialty === "Architect"),
+    members.find(m => m.specialty === "Social Media"),
+    members.find(m => m.specialty === "Search Engine Optimisation"),
+    members.find(m => m.specialty === "Commercial/Retail Interior Design & Fitout"),
+    members.find(m => m.specialty === "Builder/General Contractor"),
+    members.find(m => m.specialty === "Construction Specialist"),
   ].filter(Boolean);
 
   const SeatChip = ({ seatKey, isVisitor }) => {
     const v = isVisitor ? getVisitor(seatKey) : null;
     const m = !isVisitor ? displayMembers[parseInt(seatKey.replace("M","")) - 1] : null;
     const isOver = hovering === seatKey;
-
     return (
-      <div
-        onDragOver={(e) => { e.preventDefault(); setHovering(seatKey); }}
-        onDragLeave={() => setHovering(null)}
-        onDrop={() => isVisitor && handleDrop(seatKey)}
-        style={{
-          width: isVisitor ? 90 : 82,
-          minHeight: isVisitor ? 72 : 64,
-          borderRadius: 8,
-          border: isOver ? "2px dashed #8B1A1A" : isVisitor ? "2px solid #8B1A1A" : "2px solid #1B2A4A",
-          background: isOver ? "#FFF1F1" : isVisitor ? (v ? "#FFF7F7" : "#FFF1F1") : (m ? "#EEF2FF" : "#F8FAFC"),
-          padding: "6px 5px",
-          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-          transition: "all 0.15s",
-          position: "relative",
-          cursor: isVisitor ? "default" : "default"
-        }}
-      >
-        {/* Seat label */}
-        <div style={{
-          position: "absolute", top: 3, left: 5,
-          fontSize: 8, fontWeight: 800, color: isVisitor ? "#8B1A1A" : "#1B2A4A", opacity: 0.6
-        }}>{seatKey}</div>
-
+      <div onDragOver={(e) => { e.preventDefault(); setHovering(seatKey); }} onDragLeave={() => setHovering(null)} onDrop={() => isVisitor && handleDrop(seatKey)}
+        style={{ width: isVisitor ? 90 : 82, minHeight: isVisitor ? 72 : 64, borderRadius: 8, border: isOver ? "2px dashed #8B1A1A" : isVisitor ? "2px solid #8B1A1A" : "2px solid #1B2A4A", background: isOver ? "#FFF1F1" : isVisitor ? (v ? "#FFF7F7" : "#FFF1F1") : (m ? "#EEF2FF" : "#F8FAFC"), padding: "6px 5px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", transition: "all 0.15s", position: "relative" }}>
+        <div style={{ position: "absolute", top: 3, left: 5, fontSize: 8, fontWeight: 800, color: isVisitor ? "#8B1A1A" : "#1B2A4A", opacity: 0.6 }}>{seatKey}</div>
         {isVisitor && v && (
           <>
             <div draggable onDragStart={() => setDragging(v.id)} style={{ cursor: "grab" }}>
-              <div style={{
-                width: 28, height: 28, borderRadius: "50%",
-                background: catColor(v.category),
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 11, fontWeight: 800, color: "#fff", marginBottom: 3
-              }}>
+              <div style={{ width: 28, height: 28, borderRadius: "50%", background: catColor(v.category), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#fff", marginBottom: 3 }}>
                 {v.name.split(" ").map(n => n[0]).join("").slice(0,2)}
               </div>
             </div>
-            <div style={{ fontSize: 8.5, fontWeight: 700, color: "#111", textAlign: "center", lineHeight: 1.2 }}>
-              {v.name.split(" ")[0]}
-            </div>
-            <div style={{ fontSize: 7.5, color: "#6B7280", textAlign: "center", lineHeight: 1.2, marginTop: 1 }}>
-              {v.specialty || v.category}
-            </div>
+            <div style={{ fontSize: 8.5, fontWeight: 700, color: "#111", textAlign: "center", lineHeight: 1.2 }}>{v.name.split(" ")[0]}</div>
+            <div style={{ fontSize: 7.5, color: "#6B7280", textAlign: "center", lineHeight: 1.2, marginTop: 1 }}>{v.specialty || v.category}</div>
           </>
         )}
-
-        {isVisitor && !v && (
-          <div style={{ fontSize: 9, color: "#9CA3AF", textAlign: "center" }}>
-            {isOver ? "Drop here" : "Empty"}
-          </div>
-        )}
-
+        {isVisitor && !v && <div style={{ fontSize: 9, color: "#9CA3AF", textAlign: "center" }}>{isOver ? "Drop here" : "Empty"}</div>}
         {!isVisitor && m && (
           <>
-            <div style={{
-              width: 26, height: 26, borderRadius: "50%",
-              background: catColor(m.category),
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 10, fontWeight: 800, color: "#fff", marginBottom: 3
-            }}>
+            <div style={{ width: 26, height: 26, borderRadius: "50%", background: catColor(m.category), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: "#fff", marginBottom: 3 }}>
               {m.name.split(" ").map(n => n[0]).join("").slice(0,2)}
             </div>
-            <div style={{ fontSize: 8, fontWeight: 700, color: "#1B2A4A", textAlign: "center", lineHeight: 1.2 }}>
-              {m.name.split(" ")[0]}
-            </div>
-            <div style={{ fontSize: 7, color: "#6B7280", textAlign: "center", lineHeight: 1.2, marginTop: 1 }}>
-              {m.specialty?.split(" ").slice(0,2).join(" ")}
-            </div>
+            <div style={{ fontSize: 8, fontWeight: 700, color: "#1B2A4A", textAlign: "center", lineHeight: 1.2 }}>{m.name.split(" ")[0]}</div>
+            <div style={{ fontSize: 7, color: "#6B7280", textAlign: "center", lineHeight: 1.2, marginTop: 1 }}>{m.specialty?.split(" ").slice(0,2).join(" ")}</div>
           </>
         )}
       </div>
@@ -554,140 +661,42 @@ function SeatPlanner({ visitors, asks }) {
           <div style={{ fontWeight: 800, fontSize: 15, color: "#111" }}>🪑 Strategic Seat Planner</div>
           <div style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>Drag visitors to swap seats. Inner U = visitor row (6 seats). Outer = member seats (10).</div>
         </div>
-        <button onClick={autoAssign} style={{
-          background: "linear-gradient(135deg, #1B2A4A, #8B1A1A)", color: "#fff",
-          border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer"
-        }}>⚡ Auto-Assign by Affinity</button>
+        <button onClick={autoAssign} style={{ background: "linear-gradient(135deg, #1B2A4A, #8B1A1A)", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>⚡ Auto-Assign by Affinity</button>
       </div>
-
-      {/* Room visual */}
       <Card style={{ padding: 20, background: "#F8FAFC", position: "relative", overflow: "hidden" }}>
-        {/* Room label */}
-        <div style={{ textAlign: "center", fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 2, marginBottom: 14 }}>
-          Conference Room — BNI Insomniacs
-        </div>
-
-        {/* Presenter / top of room */}
+        <div style={{ textAlign: "center", fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 2, marginBottom: 14 }}>Conference Room — BNI Insomniacs</div>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
-          <div style={{ background: "#1B2A4A", color: "#fff", borderRadius: 8, padding: "6px 32px", fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>
-            📋 PRESENTER / EDUCATION CHAIR
-          </div>
+          <div style={{ background: "#1B2A4A", color: "#fff", borderRadius: 8, padding: "6px 32px", fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>📋 PRESENTER / EDUCATION CHAIR</div>
         </div>
-
-        {/* U-shape table */}
         <div style={{ position: "relative", margin: "0 auto", maxWidth: 680 }}>
-          
-          {/* Top member row — left arm of U */}
           <div style={{ display: "flex", gap: 6, justifyContent: "space-between", marginBottom: 6 }}>
-            {[0,1,2,3,4].map(i => (
-              <SeatChip key={`M${i+1}`} seatKey={`M${i+1}`} isVisitor={false} />
-            ))}
+            {[0,1,2,3,4].map(i => <SeatChip key={`M${i+1}`} seatKey={`M${i+1}`} isVisitor={false} />)}
           </div>
-
-          {/* Table surface */}
-          <div style={{
-            background: "linear-gradient(135deg, #1B2A4A 0%, #243555 100%)",
-            borderRadius: 12,
-            padding: "10px 20px",
-            margin: "0 4px",
-            minHeight: 70,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            boxShadow: "0 4px 20px rgba(27,42,74,0.3)",
-            position: "relative",
-            marginBottom: 6
-          }}>
-            <div style={{ color: "rgba(255,255,255,0.15)", fontSize: 13, fontWeight: 700, letterSpacing: 4, textTransform: "uppercase" }}>
-              ◈ CONFERENCE TABLE ◈
-            </div>
-            {/* Decorative lines */}
-            <div style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", width: 2, height: 30, background: "rgba(255,255,255,0.08)", borderRadius: 2 }} />
-            <div style={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)", width: 2, height: 30, background: "rgba(255,255,255,0.08)", borderRadius: 2 }} />
+          <div style={{ background: "linear-gradient(135deg, #1B2A4A 0%, #243555 100%)", borderRadius: 12, padding: "10px 20px", margin: "0 4px", minHeight: 70, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 20px rgba(27,42,74,0.3)", marginBottom: 6 }}>
+            <div style={{ color: "rgba(255,255,255,0.15)", fontSize: 13, fontWeight: 700, letterSpacing: 4, textTransform: "uppercase" }}>◈ CONFERENCE TABLE ◈</div>
           </div>
-
-          {/* Visitor row — inner U bottom */}
           <div style={{ background: "rgba(139,26,26,0.06)", borderRadius: 10, padding: "8px 4px", border: "1.5px dashed rgba(139,26,26,0.25)", marginBottom: 6 }}>
-            <div style={{ fontSize: 8.5, fontWeight: 700, color: "#8B1A1A", textAlign: "center", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>
-              ★ Visitor Row — Inner U (drag to rearrange)
-            </div>
+            <div style={{ fontSize: 8.5, fontWeight: 700, color: "#8B1A1A", textAlign: "center", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>★ Visitor Row — Inner U (drag to rearrange)</div>
             <div style={{ display: "flex", gap: 6, justifyContent: "space-between" }}>
-              {visitorSeats.map(sKey => (
-                <SeatChip key={sKey} seatKey={sKey} isVisitor={true} />
-              ))}
+              {visitorSeats.map(sKey => <SeatChip key={sKey} seatKey={sKey} isVisitor={true} />)}
             </div>
           </div>
-
-          {/* Bottom member row — right arm of U */}
           <div style={{ display: "flex", gap: 6, justifyContent: "space-between" }}>
-            {[5,6,7,8,9].map(i => (
-              <SeatChip key={`M${i+1}`} seatKey={`M${i+1}`} isVisitor={false} />
-            ))}
+            {[5,6,7,8,9].map(i => <SeatChip key={`M${i+1}`} seatKey={`M${i+1}`} isVisitor={false} />)}
           </div>
         </div>
-
-        {/* Entry marker */}
         <div style={{ textAlign: "center", marginTop: 12 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#F1F5F9", borderRadius: 20, padding: "4px 16px", fontSize: 10, color: "#6B7280", fontWeight: 600 }}>
-            ↑ ENTRANCE / REGISTRATION TABLE ↑
-          </div>
-        </div>
-
-        {/* Legend */}
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 16, paddingTop: 12, borderTop: "1px solid #E5E7EB" }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#374151" }}>Category Key:</div>
-          {[...new Set([...meetingVisitors.map(v => v.category), ...displayMembers.map(m => m.category)])].filter(Boolean).slice(0, 6).map(cat => (
-            <div key={cat} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <div style={{ width: 10, height: 10, borderRadius: "50%", background: catColor(cat) }} />
-              <span style={{ fontSize: 9, color: "#374151" }}>{cat}</span>
-            </div>
-          ))}
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#F1F5F9", borderRadius: 20, padding: "4px 16px", fontSize: 10, color: "#6B7280", fontWeight: 600 }}>↑ ENTRANCE / REGISTRATION TABLE ↑</div>
         </div>
       </Card>
 
-      {/* Match analysis per visitor seat */}
-      <div style={{ marginTop: 14 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>📊 Seat-Level Match Analysis</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-          {visitorSeats.map(sKey => {
-            const v = getVisitor(sKey);
-            if (!v) return (
-              <Card key={sKey} style={{ padding: 10, background: "#F9FAFB", border: "1.5px dashed #E5E7EB" }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: "#9CA3AF" }}>{sKey} — Empty</div>
-              </Card>
-            );
-            const topMatch = findMatches(v, asks, MEMBERS)[0];
-            return (
-              <Card key={sKey} style={{ padding: 10, borderLeft: `3px solid ${catColor(v.category)}` }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: "#6B7280" }}>{sKey}</div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#111", marginTop: 2 }}>{v.name.split(" ")[0]}</div>
-                <div style={{ fontSize: 9, color: "#6B7280" }}>{v.specialty || v.category}</div>
-                {topMatch && (
-                  <div style={{ marginTop: 6, background: "#F0FDF4", borderRadius: 6, padding: "4px 6px" }}>
-                    <div style={{ fontSize: 8.5, color: "#166534", fontWeight: 600 }}>
-                      Best match: {topMatch.member?.name.split(" ")[0]}
-                    </div>
-                    <div style={{ fontSize: 8, color: "#4ADE80" }}>{topMatch.score}% — {topMatch.type === "ask" ? "★ Ask" : "Contact Sphere"}</div>
-                  </div>
-                )}
-              </Card>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Unassigned visitors */}
       {unassigned.length > 0 && (
         <Card style={{ marginTop: 12, background: "#FFF7ED", borderColor: "#F59E0B" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "#92400E", marginBottom: 8 }}>⚠️ Unassigned Visitors ({unassigned.length})</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {unassigned.map(v => (
               <div key={v.id} draggable onDragStart={() => setDragging(v.id)}
-                style={{
-                  background: catColor(v.category), color: "#fff",
-                  borderRadius: 8, padding: "5px 10px", fontSize: 11, fontWeight: 600,
-                  cursor: "grab", display: "flex", alignItems: "center", gap: 6
-                }}>
+                style={{ background: catColor(v.category), color: "#fff", borderRadius: 8, padding: "5px 10px", fontSize: 11, fontWeight: 600, cursor: "grab", display: "flex", alignItems: "center", gap: 6 }}>
                 <div style={{ width: 20, height: 20, borderRadius: "50%", background: "rgba(255,255,255,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800 }}>
                   {v.name.split(" ").map(n => n[0]).join("").slice(0,2)}
                 </div>
@@ -695,7 +704,6 @@ function SeatPlanner({ visitors, asks }) {
               </div>
             ))}
           </div>
-          <div style={{ fontSize: 9, color: "#B45309", marginTop: 6 }}>Drag these into empty visitor seats above</div>
         </Card>
       )}
     </div>
@@ -703,7 +711,7 @@ function SeatPlanner({ visitors, asks }) {
 }
 
 // ═══════════════════════════════════════════
-// PRINT COMPONENTS
+// PRINTABLE LIST  (uses members from state now)
 // ═══════════════════════════════════════════
 function PrintBox({ label }) {
   return (
@@ -714,23 +722,18 @@ function PrintBox({ label }) {
   );
 }
 
-function PrintableVisitorList({ visitors, meetingDate, asks }) {
+function PrintableVisitorList({ visitors, meetingDate, asks, members }) {
   const formatted = (() => {
     const d = new Date(meetingDate + "T00:00:00");
     return d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   })();
-
-  const getTopMatches = (v) => findMatches(v, asks, MEMBERS).filter(m => m.score >= 50).slice(0, 2);
-  const WALK_IN_ROWS = 3;   // ← blank rows for on-the-day walk-ins
+  const getTopMatches = (v) => findMatches(v, asks, members).filter(m => m.score >= 50).slice(0, 2);
+  const WALK_IN_ROWS = 3;
   const SUBSTITUTE_ROWS = 8;
-
-  // Column header font slightly larger too
   const TH = { padding: "8px 8px", textAlign: "left", fontWeight: 800, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.3 };
 
   return (
     <div style={{ fontFamily: "'Arial', sans-serif", background: "#fff", color: "#111", padding: "18px 24px" }}>
-
-      {/* ── HEADER ── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "3px solid #8B1A1A", paddingBottom: 10, marginBottom: 14 }}>
         <div>
           <div style={{ fontSize: 22, fontWeight: 900, color: "#8B1A1A", letterSpacing: -0.5 }}>BNI Insomniacs</div>
@@ -745,8 +748,6 @@ function PrintableVisitorList({ visitors, meetingDate, asks }) {
           </div>
         </div>
       </div>
-
-      {/* ── VISITOR TABLE ── */}
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
         <thead>
           <tr style={{ background: "#1B2A4A", color: "#fff" }}>
@@ -762,7 +763,6 @@ function PrintableVisitorList({ visitors, meetingDate, asks }) {
           </tr>
         </thead>
         <tbody>
-          {/* ── Registered visitors ── */}
           {visitors.map((v, i) => {
             const topMatches = getTopMatches(v);
             return (
@@ -782,9 +782,7 @@ function PrintableVisitorList({ visitors, meetingDate, asks }) {
                 <td style={{ padding: "9px 8px", color: "#374151", fontSize: 12 }}>{v.invitedBy || "—"}</td>
                 <td style={{ padding: "9px 8px", color: "#374151", fontSize: 11 }}>{v.phone || "—"}</td>
                 <td style={{ padding: "9px 8px" }}>
-                  {topMatches.length === 0 ? (
-                    <span style={{ color: "#9CA3AF", fontSize: 11 }}>—</span>
-                  ) : (
+                  {topMatches.length === 0 ? <span style={{ color: "#9CA3AF", fontSize: 11 }}>—</span> : (
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       {topMatches.map((m, mi) => (
                         <div key={mi} style={{ display: "flex", alignItems: "flex-start", gap: 5 }}>
@@ -802,8 +800,6 @@ function PrintableVisitorList({ visitors, meetingDate, asks }) {
               </tr>
             );
           })}
-
-          {/* ── Walk-in blank rows ── */}
           {Array.from({ length: WALK_IN_ROWS }).map((_, i) => (
             <tr key={"walkin-" + i} style={{ background: i % 2 === 0 ? "#FFFBF0" : "#FFF8E8", borderBottom: "1px solid #FDE68A" }}>
               <td style={{ padding: "12px 8px", color: "#D97706", fontWeight: 700, fontSize: 12 }}>{visitors.length + i + 1}</td>
@@ -822,27 +818,8 @@ function PrintableVisitorList({ visitors, meetingDate, asks }) {
           ))}
         </tbody>
       </table>
-
-      {/* ── STATUS LEGEND ── */}
-      {visitors.length > 0 && (
-        <div style={{ display: "flex", gap: 12, marginTop: 8, paddingTop: 6, borderTop: "1px solid #E5E7EB", flexWrap: "wrap", alignItems: "center" }}>
-          {Object.entries(visitors.reduce((acc, v) => { acc[v.status] = (acc[v.status] || 0) + 1; return acc; }, {})).map(([s, n]) => (
-            <div key={s} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
-              <span style={{ background: STATUS_COLORS[s]?.bg, color: STATUS_COLORS[s]?.text, padding: "2px 7px", borderRadius: 8, fontWeight: 700, fontSize: 10 }}>{STATUS_COLORS[s]?.label || s}</span>
-              <span style={{ fontWeight: 700, color: "#374151" }}>{n}</span>
-            </div>
-          ))}
-          <div style={{ marginLeft: "auto", fontSize: 10, color: "#9CA3AF" }}>
-            ● Red = Ask match (90%+) &nbsp;● Amber = Strong (70%+) &nbsp;● Blue = Contact Sphere
-          </div>
-        </div>
-      )}
-
-      {/* ── SUBSTITUTE TABLE ── */}
       <div style={{ marginTop: 18, pageBreakInside: "avoid" }}>
-        <div style={{ background: "#1B2A4A", color: "#fff", padding: "8px 12px", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.5, borderRadius: "4px 4px 0 0" }}>
-          Member Substitutes
-        </div>
+        <div style={{ background: "#1B2A4A", color: "#fff", padding: "8px 12px", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.5, borderRadius: "4px 4px 0 0" }}>Member Substitutes</div>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
           <thead>
             <tr style={{ background: "#F1F5F9" }}>
@@ -866,8 +843,6 @@ function PrintableVisitorList({ visitors, meetingDate, asks }) {
           </tbody>
         </table>
       </div>
-
-      {/* ── FOOTER ── */}
       <div style={{ marginTop: 14, paddingTop: 6, borderTop: "2px solid #8B1A1A", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ fontSize: 10, color: "#9CA3AF" }}>BNI Insomniacs • Visitor Host Programme • Confidential</div>
         <div style={{ fontSize: 10, color: "#9CA3AF" }}>Givers Gain®</div>
@@ -886,23 +861,25 @@ const TABS = [
   { label: "AI Match", icon: "🤖" },
   { label: "Seat Planner", icon: "🪑" },
   { label: "Members", icon: "📇" },
+  { label: "Archive", icon: "🗄️" },
   { label: "Follow-Up", icon: "📬" },
 ];
 
-function DashboardTab({ visitors, asks }) {
+function DashboardTab({ visitors, asks, members, archived }) {
   const thisWeek = visitors.filter(v => v.date === "2026-04-08");
   const attended = visitors.filter(v => ["attended","oriented","applied","joined"].includes(v.status)).length;
   const applied = visitors.filter(v => ["applied","joined"].includes(v.status)).length;
   const ratio = attended > 0 ? Math.round((applied / attended) * 100) : 0;
   const catCounts = {};
-  MEMBERS.forEach(m => { catCounts[m.category] = (catCounts[m.category] || 0) + 1; });
+  members.forEach(m => { catCounts[m.category] = (catCounts[m.category] || 0) + 1; });
 
   return <div>
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
       <StatCard label="This Week" value={thisWeek.length} sub="Visitors registered" color="#4338CA" />
-      <StatCard label="Members" value={MEMBERS.length} sub="BNI Insomniacs" color="#065F46" />
+      <StatCard label="Members" value={members.length} sub="BNI Insomniacs" color="#065F46" />
       <StatCard label="Open Asks" value={asks.filter(a => a.status === "open").length} sub="From members" color="#D97706" />
       <StatCard label="Closing Ratio" value={`${ratio}%`} sub={`${applied}/${attended}`} color="#9D174D" />
+      <StatCard label="Archived" value={archived.length} sub="Past visitors" color="#6B21A8" />
     </div>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
       <Card>
@@ -930,14 +907,22 @@ function DashboardTab({ visitors, asks }) {
 }
 
 // ═══════════════════════════════════════════
-// VISITORS TAB — with AI Intelligence
+// VISITORS TAB — with Edit, Delete, Archive, Validate
 // ═══════════════════════════════════════════
-function VisitorsTab({ visitors, setVisitors, asks }) {
+function VisitorsTab({ visitors, setVisitors, asks, members, archived, setArchived }) {
   const [showForm, setShowForm] = useState(false);
   const [viewMode, setViewMode] = useState("list");
   const [printDate, setPrintDate] = useState("2026-04-08");
   const [expandedId, setExpandedId] = useState(null);
+  const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ name: "", business: "", phone: "", email: "", invitedBy: "", category: "", specialty: "", date: "2026-04-08" });
+  const [editForm, setEditForm] = useState({});
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmArchive, setConfirmArchive] = useState(null);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [activePanel, setActivePanel] = useState({});  // { [visitorId]: 'brief' | 'validate' }
+
+  const allCategoriesPresent = [...new Set(members.map(m => m.category))].sort();
 
   useEffect(() => {
     if (!document.getElementById("bni-spin-style")) {
@@ -948,35 +933,62 @@ function VisitorsTab({ visitors, setVisitors, asks }) {
     }
   }, []);
 
-  const [showPrintModal, setShowPrintModal] = useState(false);
-
   const allDates = [...new Set(visitors.map(v => v.date))].sort().reverse();
   const printVisitors = visitors.filter(v => v.date === printDate);
 
-  const addVisitor = async () => {
+  const addVisitor = () => {
     if (!form.name || !form.business) return;
-    const { data } = await supabase.from('visitors').insert([{
-      name: form.name, business: form.business, phone: form.phone,
-      email: form.email, invited_by: form.invitedBy, category: form.category,
-      specialty: form.specialty, date: form.date, status: 'registered',
-      call_notes: '', seat_assignment: '', follow_up_response: null, bio: null
-    }]).select();
-    if (data?.[0]) setVisitors(p => [...p, { ...data[0], invitedBy: data[0].invited_by, callNotes: data[0].call_notes, seatAssignment: data[0].seat_assignment, followUpResponse: data[0].follow_up_response }]);
+    setVisitors(p => [...p, { ...form, id: Date.now(), status: "registered", callNotes: "", seatAssignment: "", followUpResponse: null, bio: null, validation: null }]);
     setForm({ name: "", business: "", phone: "", email: "", invitedBy: "", category: "", specialty: "", date: "2026-04-08" });
     setShowForm(false);
   };
 
-  const updateStatus = async (id, status) => {
-    await supabase.from('visitors').update({ status }).eq('id', id);
-    setVisitors(p => p.map(v => v.id === id ? { ...v, status } : v));
+  const updateStatus = (id, status) => setVisitors(p => p.map(v => v.id === id ? { ...v, status } : v));
+  const saveBio = (id, bio) => setVisitors(p => p.map(v => v.id === id ? { ...v, bio } : v));
+  const saveValidation = (id, validation) => setVisitors(p => p.map(v => v.id === id ? { ...v, validation } : v));
+
+  const startEdit = (v) => { setEditingId(v.id); setEditForm({ ...v }); setExpandedId(null); };
+  const cancelEdit = () => { setEditingId(null); setEditForm({}); };
+  const saveEdit = () => {
+    setVisitors(p => p.map(v => v.id === editingId ? { ...v, ...editForm } : v));
+    setEditingId(null);
+    setEditForm({});
   };
-  const saveBio = async (id, bio) => {
-    await supabase.from('visitors').update({ bio }).eq('id', id);
-    setVisitors(p => p.map(v => v.id === id ? { ...v, bio } : v));
+
+  const requestDelete = (v) => setConfirmDelete(v);
+  const doDelete = () => {
+    setVisitors(p => p.filter(v => v.id !== confirmDelete.id));
+    setConfirmDelete(null);
+  };
+
+  const requestArchive = (v) => setConfirmArchive(v);
+  const doArchive = () => {
+    const archivedAt = new Date().toISOString();
+    setArchived(p => [...p, { ...confirmArchive, archivedAt }]);
+    setVisitors(p => p.filter(v => v.id !== confirmArchive.id));
+    setConfirmArchive(null);
   };
 
   return <div>
     <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
+    <ConfirmModal
+      open={!!confirmDelete}
+      title="Delete this visitor?"
+      message={confirmDelete ? `This will permanently remove "${confirmDelete.name}" from your active list. This cannot be undone.` : ""}
+      confirmLabel="Yes, delete"
+      onConfirm={doDelete}
+      onCancel={() => setConfirmDelete(null)}
+    />
+    <ConfirmModal
+      open={!!confirmArchive}
+      title="Archive this visitor?"
+      message={confirmArchive ? `"${confirmArchive.name}" will move from your active list to the Archive tab. You can look them up later by month.` : ""}
+      confirmLabel="Yes, archive"
+      danger={false}
+      onConfirm={doArchive}
+      onCancel={() => setConfirmArchive(null)}
+    />
 
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
       <span style={{ fontWeight: 700, fontSize: 15 }}>All Visitors ({visitors.length})</span>
@@ -1004,14 +1016,14 @@ function VisitorsTab({ visitors, setVisitors, asks }) {
             <label style={{ fontSize: 10, fontWeight: 600 }}>Invited By</label>
             <select value={form.invitedBy} onChange={e => setForm(p => ({...p, invitedBy: e.target.value}))} style={{ width: "100%", padding: "5px 8px", border: "1px solid #D1D5DB", borderRadius: 6, fontSize: 12 }}>
               <option value="">Select member...</option>
-              {MEMBERS.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+              {members.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
             </select>
           </div>
           <div>
             <label style={{ fontSize: 10, fontWeight: 600 }}>Category</label>
             <select value={form.category} onChange={e => setForm(p => ({...p, category: e.target.value}))} style={{ width: "100%", padding: "5px 8px", border: "1px solid #D1D5DB", borderRadius: 6, fontSize: 12 }}>
               <option value="">Select category...</option>
-              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              {allCategoriesPresent.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div>
@@ -1028,37 +1040,120 @@ function VisitorsTab({ visitors, setVisitors, asks }) {
 
       {visitors.map(v => {
         const isExpanded = expandedId === v.id;
-        const topMatch = findMatches(v, asks, MEMBERS)[0];
+        const isEditing = editingId === v.id;
+        const topMatch = findMatches(v, asks, members)[0];
+        const verdict = v.validation?.verdict;
+        const verdictBadge = verdict === "GREEN" ? { bg: "#D1FAE5", text: "#065F46", label: "✅ Green" } :
+                             verdict === "AMBER" ? { bg: "#FEF3C7", text: "#92400E", label: "⚠️ Amber" } :
+                             verdict === "RED"   ? { bg: "#FEE2E2", text: "#991B1B", label: "🛑 Red" } : null;
+        const panel = activePanel[v.id]; // 'brief' or 'validate'
+
+        if (isEditing) {
+          return (
+            <Card key={v.id} style={{ marginBottom: 10, padding: 14, background: "#FEFCE8", border: "2px solid #F59E0B" }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#92400E", marginBottom: 8 }}>✏️ Editing visitor</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {[["name","Full Name"],["business","Business"],["phone","Phone"],["email","Email"]].map(([k,l]) => (
+                  <div key={k}>
+                    <label style={{ fontSize: 10, fontWeight: 600 }}>{l}</label>
+                    <input value={editForm[k] || ""} onChange={e => setEditForm(p => ({...p, [k]: e.target.value}))} style={{ width: "100%", padding: "5px 8px", border: "1px solid #D1D5DB", borderRadius: 6, fontSize: 12, boxSizing: "border-box" }} />
+                  </div>
+                ))}
+                <div>
+                  <label style={{ fontSize: 10, fontWeight: 600 }}>Invited By</label>
+                  <select value={editForm.invitedBy || ""} onChange={e => setEditForm(p => ({...p, invitedBy: e.target.value}))} style={{ width: "100%", padding: "5px 8px", border: "1px solid #D1D5DB", borderRadius: 6, fontSize: 12 }}>
+                    <option value="">Select member...</option>
+                    {members.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 10, fontWeight: 600 }}>Category</label>
+                  <select value={editForm.category || ""} onChange={e => setEditForm(p => ({...p, category: e.target.value}))} style={{ width: "100%", padding: "5px 8px", border: "1px solid #D1D5DB", borderRadius: 6, fontSize: 12 }}>
+                    <option value="">Select category...</option>
+                    {allCategoriesPresent.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 10, fontWeight: 600 }}>Specialty</label>
+                  <input value={editForm.specialty || ""} onChange={e => setEditForm(p => ({...p, specialty: e.target.value}))} style={{ width: "100%", padding: "5px 8px", border: "1px solid #D1D5DB", borderRadius: 6, fontSize: 12, boxSizing: "border-box" }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 10, fontWeight: 600 }}>Meeting Date</label>
+                  <input type="date" value={editForm.date || ""} onChange={e => setEditForm(p => ({...p, date: e.target.value}))} style={{ width: "100%", padding: "5px 8px", border: "1px solid #D1D5DB", borderRadius: 6, fontSize: 12, boxSizing: "border-box" }} />
+                </div>
+                <div style={{ gridColumn: "span 2" }}>
+                  <label style={{ fontSize: 10, fontWeight: 600 }}>Call notes</label>
+                  <textarea value={editForm.callNotes || ""} onChange={e => setEditForm(p => ({...p, callNotes: e.target.value}))} rows={2} style={{ width: "100%", padding: "5px 8px", border: "1px solid #D1D5DB", borderRadius: 6, fontSize: 12, boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" }} />
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <button onClick={saveEdit} style={{ background: "#059669", color: "#fff", border: "none", borderRadius: 8, padding: "7px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>💾 Save Changes</button>
+                <button onClick={cancelEdit} style={{ background: "#fff", color: "#374151", border: "1px solid #D1D5DB", borderRadius: 8, padding: "7px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+              </div>
+            </Card>
+          );
+        }
+
         return (
           <Card key={v.id} style={{ marginBottom: 8, padding: 12, border: v.bio ? "1px solid #C7D2FE" : "1px solid #E5E7EB" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <div style={{ fontWeight: 700, fontSize: 13 }}>{v.name}</div>
                   {v.bio && <span style={{ background: "#EEF2FF", color: "#4338CA", fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 20 }}>✦ Briefed</span>}
+                  {verdictBadge && <span style={{ background: verdictBadge.bg, color: verdictBadge.text, fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 20 }}>{verdictBadge.label}</span>}
                   {topMatch && <span style={{ background: topMatch.score >= 70 ? "#FEF3C7" : "#DBEAFE", color: topMatch.score >= 70 ? "#92400E" : "#1E40AF", fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 20 }}>
                     → {topMatch.member?.name.split(" ")[0]}
                   </span>}
                 </div>
                 <div style={{ fontSize: 11, color: "#6B7280" }}>{v.business} • {v.category || "—"}</div>
-                <div style={{ fontSize: 10, color: "#9CA3AF" }}>Invited by {v.invitedBy} • {v.date}</div>
+                <div style={{ fontSize: 10, color: "#9CA3AF" }}>Invited by {v.invitedBy || "—"} • {v.date}</div>
               </div>
-              <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+              <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
                 <StatusBadge status={v.status} />
                 <select value={v.status} onChange={e => updateStatus(v.id, e.target.value)} style={{ fontSize: 10, padding: "2px 4px", border: "1px solid #D1D5DB", borderRadius: 4 }}>
                   {Object.keys(STATUS_COLORS).map(s => <option key={s} value={s}>{STATUS_COLORS[s].label}</option>)}
                 </select>
-                <button
-                  onClick={() => setExpandedId(isExpanded ? null : v.id)}
-                  style={{ background: isExpanded ? "#EEF2FF" : "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 6, padding: "3px 8px", fontSize: 11, cursor: "pointer", fontWeight: 600, color: "#4338CA" }}>
-                  {isExpanded ? "▲" : "✨ Brief"}
-                </button>
               </div>
             </div>
 
-            {isExpanded && (
+            {/* Action row */}
+            <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+              <button
+                onClick={() => { setExpandedId(isExpanded && panel === "brief" ? null : v.id); setActivePanel(p => ({ ...p, [v.id]: "brief" })); }}
+                style={{ background: panel === "brief" && isExpanded ? "#EEF2FF" : "#F9FAFB", border: "1px solid #C7D2FE", color: "#4338CA", borderRadius: 6, padding: "5px 10px", fontSize: 11, cursor: "pointer", fontWeight: 700 }}>
+                ✨ Brief
+              </button>
+              <button
+                onClick={() => { setExpandedId(isExpanded && panel === "validate" ? null : v.id); setActivePanel(p => ({ ...p, [v.id]: "validate" })); }}
+                style={{ background: panel === "validate" && isExpanded ? "#D1FAE5" : "#F9FAFB", border: "1px solid #6EE7B7", color: "#065F46", borderRadius: 6, padding: "5px 10px", fontSize: 11, cursor: "pointer", fontWeight: 700 }}>
+                🛡️ Validate
+              </button>
+              <button
+                onClick={() => startEdit(v)}
+                style={{ background: "#F9FAFB", border: "1px solid #FCD34D", color: "#92400E", borderRadius: 6, padding: "5px 10px", fontSize: 11, cursor: "pointer", fontWeight: 700 }}>
+                ✏️ Edit
+              </button>
+              <button
+                onClick={() => requestArchive(v)}
+                style={{ background: "#F9FAFB", border: "1px solid #C4B5FD", color: "#5B21B6", borderRadius: 6, padding: "5px 10px", fontSize: 11, cursor: "pointer", fontWeight: 700 }}>
+                🗄️ Archive
+              </button>
+              <button
+                onClick={() => requestDelete(v)}
+                style={{ background: "#fff", border: "1px solid #FCA5A5", color: "#991B1B", borderRadius: 6, padding: "5px 10px", fontSize: 11, cursor: "pointer", fontWeight: 700 }}>
+                🗑️ Delete
+              </button>
+            </div>
+
+            {isExpanded && panel === "brief" && (
               <div style={{ marginTop: 10, borderTop: "1px solid #F3F4F6", paddingTop: 10 }}>
                 <VisitorIntelligence visitor={v} onBioSaved={saveBio} />
+              </div>
+            )}
+            {isExpanded && panel === "validate" && (
+              <div style={{ marginTop: 10, borderTop: "1px solid #F3F4F6", paddingTop: 10 }}>
+                <VisitorValidation visitor={v} members={members} onValidationSaved={saveValidation} />
               </div>
             )}
           </Card>
@@ -1087,46 +1182,27 @@ function VisitorsTab({ visitors, setVisitors, asks }) {
       <div style={{ border: "2px solid #E5E7EB", borderRadius: 10, overflow: "hidden", background: "#fff" }}>
         <div style={{ background: "#374151", color: "#9CA3AF", fontSize: 10, padding: "5px 14px", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>Preview — A4 Landscape</div>
         <div id="bni-print-area">
-          <PrintableVisitorList visitors={printVisitors} meetingDate={printDate} asks={asks} />
+          <PrintableVisitorList visitors={printVisitors} meetingDate={printDate} asks={asks} members={members} />
         </div>
       </div>
     </>}
 
-    {/* ── FULL-SCREEN PRINT MODAL ── */}
     {showPrintModal && (
-      <div style={{
-        position: "fixed", inset: 0, zIndex: 9999,
-        background: "#fff", overflowY: "auto"
-      }}>
-        {/* Sticky instruction bar — hidden when printing */}
-        <div className="no-print" style={{
-          position: "sticky", top: 0, zIndex: 10000,
-          background: "#1B2A4A", color: "#fff",
-          padding: "10px 20px", display: "flex", alignItems: "center",
-          justifyContent: "space-between", gap: 12, flexWrap: "wrap",
-          boxShadow: "0 2px 12px rgba(0,0,0,0.3)"
-        }}>
+      <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "#fff", overflowY: "auto" }}>
+        <div className="no-print" style={{ position: "sticky", top: 0, zIndex: 10000, background: "#1B2A4A", color: "#fff", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", boxShadow: "0 2px 12px rgba(0,0,0,0.3)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ fontSize: 15, fontWeight: 800 }}>🖨️ Print-Ready View</span>
             <span style={{ fontSize: 12, color: "#93C5FD" }}>
               Press <kbd style={{ background: "#374151", border: "1px solid #4B5563", borderRadius: 4, padding: "1px 6px", fontFamily: "monospace", fontSize: 12 }}>Ctrl+P</kbd>
-              &nbsp;(Windows) or <kbd style={{ background: "#374151", border: "1px solid #4B5563", borderRadius: 4, padding: "1px 6px", fontFamily: "monospace", fontSize: 12 }}>⌘+P</kbd>
-              &nbsp;(Mac) → choose <strong style={{ color: "#FCD34D" }}>"Save as PDF"</strong> → set <strong style={{ color: "#FCD34D" }}>Layout: Landscape</strong>
+              &nbsp;or <kbd style={{ background: "#374151", border: "1px solid #4B5563", borderRadius: 4, padding: "1px 6px", fontFamily: "monospace", fontSize: 12 }}>⌘+P</kbd>
+              &nbsp;→ <strong style={{ color: "#FCD34D" }}>"Save as PDF"</strong> → <strong style={{ color: "#FCD34D" }}>Layout: Landscape</strong>
             </span>
           </div>
-          <button
-            onClick={() => setShowPrintModal(false)}
-            style={{ background: "#8B1A1A", color: "#fff", border: "none", borderRadius: 8, padding: "7px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-            ✕ Close
-          </button>
+          <button onClick={() => setShowPrintModal(false)} style={{ background: "#8B1A1A", color: "#fff", border: "none", borderRadius: 8, padding: "7px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✕ Close</button>
         </div>
-
-        {/* The printable content */}
         <div id="bni-modal-print-area">
-          <PrintableVisitorList visitors={printVisitors} meetingDate={printDate} asks={asks} />
+          <PrintableVisitorList visitors={printVisitors} meetingDate={printDate} asks={asks} members={members} />
         </div>
-
-        {/* Print styles: hide the top bar, only print the content */}
         <style>{`
           @media print {
             .no-print { display: none !important; }
@@ -1139,29 +1215,186 @@ function VisitorsTab({ visitors, setVisitors, asks }) {
   </div>;
 }
 
-function AsksTab({ asks, setAsks }) {
+// ═══════════════════════════════════════════
+// NEW: ARCHIVE TAB — month-based lookup
+// ═══════════════════════════════════════════
+function ArchiveTab({ archived, setArchived, visitors, setVisitors }) {
+  const [filterMonth, setFilterMonth] = useState("all");
+  const [search, setSearch] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmRestore, setConfirmRestore] = useState(null);
+
+  // Build month index from the visitor's meeting date (more useful than archivedAt)
+  const monthsInArchive = [...new Set(archived.map(v => (v.date || "").slice(0, 7)).filter(Boolean))].sort().reverse();
+
+  const monthLabel = (ym) => {
+    if (!ym) return "Unknown";
+    const [y, m] = ym.split("-");
+    return new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+  };
+
+  const filtered = archived.filter(v => {
+    const monthOk = filterMonth === "all" || (v.date || "").startsWith(filterMonth);
+    const searchOk = !search || v.name.toLowerCase().includes(search.toLowerCase()) ||
+                     v.business.toLowerCase().includes(search.toLowerCase()) ||
+                     (v.invitedBy || "").toLowerCase().includes(search.toLowerCase());
+    return monthOk && searchOk;
+  }).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
+  // Group by month for display
+  const grouped = {};
+  filtered.forEach(v => {
+    const month = (v.date || "").slice(0, 7) || "unknown";
+    if (!grouped[month]) grouped[month] = [];
+    grouped[month].push(v);
+  });
+
+  const archiveAllPast = () => {
+    const today = new Date().toISOString().split("T")[0];
+    const toArchive = visitors.filter(v => v.date < today);
+    if (toArchive.length === 0) {
+      alert("No visitors with past meeting dates to archive.");
+      return;
+    }
+    if (!confirm(`Archive ${toArchive.length} visitor(s) with past meeting dates?`)) return;
+    const archivedAt = new Date().toISOString();
+    setArchived(p => [...p, ...toArchive.map(v => ({ ...v, archivedAt }))]);
+    setVisitors(p => p.filter(v => v.date >= today));
+  };
+
+  const doRestore = () => {
+    setVisitors(p => [...p, { ...confirmRestore }]);
+    setArchived(p => p.filter(v => v.id !== confirmRestore.id));
+    setConfirmRestore(null);
+  };
+
+  const doDelete = () => {
+    setArchived(p => p.filter(v => v.id !== confirmDelete.id));
+    setConfirmDelete(null);
+  };
+
+  return (
+    <div>
+      <ConfirmModal
+        open={!!confirmDelete}
+        title="Permanently delete from archive?"
+        message={confirmDelete ? `"${confirmDelete.name}" will be permanently deleted from your archive. This cannot be undone.` : ""}
+        confirmLabel="Yes, delete forever"
+        onConfirm={doDelete}
+        onCancel={() => setConfirmDelete(null)}
+      />
+      <ConfirmModal
+        open={!!confirmRestore}
+        title="Restore visitor to active list?"
+        message={confirmRestore ? `"${confirmRestore.name}" will move from the archive back to your active visitors list.` : ""}
+        confirmLabel="Yes, restore"
+        danger={false}
+        onConfirm={doRestore}
+        onCancel={() => setConfirmRestore(null)}
+      />
+
+      <Card style={{ marginBottom: 12, background: "linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%)", borderColor: "#A78BFA" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "#5B21B6", marginBottom: 4 }}>🗄️ Visitor Archive</div>
+        <div style={{ fontSize: 11, color: "#6D28D9", lineHeight: 1.6 }}>
+          Past visitors stored by meeting month. Use this to look up who visited, find returning prospects, or pull historical records. Archived visitors don't appear in dashboard counts, AI matching, or the seat planner.
+        </div>
+      </Card>
+
+      <Card style={{ marginBottom: 12 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <label style={{ fontSize: 10, fontWeight: 700, color: "#374151", display: "block", marginBottom: 3 }}>📅 Filter by month</label>
+            <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} style={{ width: "100%", padding: "6px 10px", border: "1px solid #D1D5DB", borderRadius: 8, fontSize: 12 }}>
+              <option value="all">All months ({archived.length} total)</option>
+              {monthsInArchive.map(m => (
+                <option key={m} value={m}>{monthLabel(m)} ({archived.filter(v => (v.date || "").startsWith(m)).length})</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <label style={{ fontSize: 10, fontWeight: 700, color: "#374151", display: "block", marginBottom: 3 }}>🔍 Search</label>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name, business, or inviter..." style={{ width: "100%", padding: "6px 10px", border: "1px solid #D1D5DB", borderRadius: 8, fontSize: 12, boxSizing: "border-box" }} />
+          </div>
+          <button onClick={archiveAllPast} style={{ background: "#5B21B6", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+            ⚡ Archive all past meetings
+          </button>
+        </div>
+      </Card>
+
+      {filtered.length === 0 ? (
+        <Card style={{ textAlign: "center", padding: 32, color: "#9CA3AF" }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>🗂️</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "#6B7280" }}>
+            {archived.length === 0 ? "Archive is empty" : "No visitors match your filter"}
+          </div>
+          <div style={{ fontSize: 11, marginTop: 6 }}>
+            {archived.length === 0 ? "Archive visitors from the Visitors tab to keep historical records." : "Try a different month or clear your search."}
+          </div>
+        </Card>
+      ) : (
+        Object.keys(grouped).sort().reverse().map(month => (
+          <div key={month} style={{ marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <div style={{ background: "#5B21B6", color: "#fff", padding: "4px 12px", borderRadius: 16, fontSize: 11, fontWeight: 800 }}>
+                {monthLabel(month)}
+              </div>
+              <div style={{ fontSize: 10, color: "#9CA3AF" }}>{grouped[month].length} visitor{grouped[month].length !== 1 ? "s" : ""}</div>
+              <div style={{ flex: 1, height: 1, background: "#E5E7EB" }} />
+            </div>
+            {grouped[month].map(v => (
+              <Card key={v.id} style={{ marginBottom: 6, padding: 10, borderLeft: "3px solid #A78BFA" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 700, fontSize: 12 }}>{v.name}</span>
+                      <StatusBadge status={v.status} />
+                      {v.validation?.verdict && (
+                        <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 8,
+                          background: v.validation.verdict === "GREEN" ? "#D1FAE5" : v.validation.verdict === "AMBER" ? "#FEF3C7" : "#FEE2E2",
+                          color: v.validation.verdict === "GREEN" ? "#065F46" : v.validation.verdict === "AMBER" ? "#92400E" : "#991B1B" }}>
+                          {v.validation.verdict}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#6B7280" }}>{v.business} • {v.category || "—"}</div>
+                    <div style={{ fontSize: 10, color: "#9CA3AF" }}>
+                      Meeting: {v.date} • Invited by {v.invitedBy || "walk-in"} • {v.phone || "no phone"}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                    <button onClick={() => setConfirmRestore(v)} style={{ background: "#EEF2FF", border: "1px solid #C7D2FE", color: "#4338CA", borderRadius: 6, padding: "4px 8px", fontSize: 10, cursor: "pointer", fontWeight: 700 }}>↩ Restore</button>
+                    <button onClick={() => setConfirmDelete(v)} style={{ background: "#fff", border: "1px solid #FCA5A5", color: "#991B1B", borderRadius: 6, padding: "4px 8px", fontSize: 10, cursor: "pointer", fontWeight: 700 }}>🗑️</button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+function AsksTab({ asks, setAsks, members }) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ memberId: "", askType: "general_role", targetName: "", targetCompany: "", targetCategory: "", targetRole: "", notes: "" });
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
-  const addAsk = async () => {
-    const member = MEMBERS.find(m => m.id === Number(form.memberId));
+  const allCategories = [...new Set(members.map(m => m.category))].sort();
+
+  const addAsk = () => {
+    const member = members.find(m => m.id === Number(form.memberId));
     if (!member) return;
-    const { data } = await supabase.from('asks').insert([{
-      member_id: member.id, member_name: member.name, ask_type: form.askType,
-      target_name: form.targetName, target_company: form.targetCompany,
-      target_category: form.targetCategory, target_role: form.targetRole,
-      notes: form.notes, date: new Date().toISOString().split("T")[0], status: 'open'
-    }]).select();
-    if (data?.[0]) setAsks(p => [...p, { ...data[0], memberId: data[0].member_id, memberName: data[0].member_name, askType: data[0].ask_type, targetName: data[0].target_name, targetCompany: data[0].target_company, targetCategory: data[0].target_category, targetRole: data[0].target_role }]);
+    setAsks(p => [...p, { ...form, id: Date.now(), memberId: member.id, memberName: member.name, date: new Date().toISOString().split("T")[0], status: "open" }]);
     setForm({ memberId: "", askType: "general_role", targetName: "", targetCompany: "", targetCategory: "", targetRole: "", notes: "" });
     setShowForm(false);
   };
-const closeAsk = async (id) => {
-    await supabase.from('asks').update({ status: 'fulfilled' }).eq('id', id);
-    setAsks(p => p.map(a => a.id === id ? { ...a, status: 'fulfilled' } : a));
-  };
+  const closeAsk = (id) => setAsks(p => p.map(a => a.id === id ? { ...a, status: "fulfilled" } : a));
+  const doDelete = () => { setAsks(p => p.filter(a => a.id !== confirmDelete.id)); setConfirmDelete(null); };
 
   return <div>
+    <ConfirmModal open={!!confirmDelete} title="Delete this ask?" message={confirmDelete ? `Delete the ask from ${confirmDelete.memberName}? This cannot be undone.` : ""} confirmLabel="Yes, delete" onConfirm={doDelete} onCancel={() => setConfirmDelete(null)} />
+
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
       <span style={{ fontWeight: 700, fontSize: 15 }}>Member Asks Database ({asks.length})</span>
       <button onClick={() => setShowForm(!showForm)} style={{ background: "#8B1A1A", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>+ New Ask</button>
@@ -1181,7 +1414,7 @@ const closeAsk = async (id) => {
           <label style={{ fontSize: 10, fontWeight: 600 }}>Member</label>
           <select value={form.memberId} onChange={e => setForm(p => ({...p, memberId: e.target.value}))} style={{ width: "100%", padding: "5px 8px", border: "1px solid #D1D5DB", borderRadius: 6, fontSize: 12 }}>
             <option value="">Select member...</option>
-            {MEMBERS.map(m => <option key={m.id} value={m.id}>{m.name} ({m.specialty})</option>)}
+            {members.map(m => <option key={m.id} value={m.id}>{m.name} ({m.specialty})</option>)}
           </select>
         </div>
         <div>
@@ -1208,7 +1441,7 @@ const closeAsk = async (id) => {
           <label style={{ fontSize: 10, fontWeight: 600 }}>Relevant Category</label>
           <select value={form.targetCategory} onChange={e => setForm(p => ({...p, targetCategory: e.target.value}))} style={{ width: "100%", padding: "5px 8px", border: "1px solid #D1D5DB", borderRadius: 6, fontSize: 12 }}>
             <option value="">Select category...</option>
-            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
         <div><label style={{ fontSize: 10, fontWeight: 600 }}>Notes</label><input value={form.notes} onChange={e => setForm(p => ({...p, notes: e.target.value}))} style={{ width: "100%", padding: "5px 8px", border: "1px solid #D1D5DB", borderRadius: 6, fontSize: 12, boxSizing: "border-box" }} /></div>
@@ -1218,7 +1451,7 @@ const closeAsk = async (id) => {
 
     {asks.map(a => <Card key={a.id} style={{ marginBottom: 8, padding: 12, opacity: a.status === "fulfilled" ? 0.5 : 1 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div>
+        <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 700, fontSize: 13 }}>{a.memberName}</div>
           <div style={{ fontSize: 12, color: "#374151", marginTop: 2 }}>
             {a.askType === "specific_person" && <span>🔍 Looking for: <strong>{a.targetName}</strong> {a.targetCompany && `from ${a.targetCompany}`}</span>}
@@ -1227,18 +1460,19 @@ const closeAsk = async (id) => {
           </div>
           <div style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>{a.targetCategory} • {a.notes} • {a.date}</div>
         </div>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
           <Badge bg={a.status === "open" ? "#FEF3C7" : "#D1FAE5"} text={a.status === "open" ? "#92400E" : "#065F46"} label={a.status === "open" ? "Open" : "Fulfilled"} />
-          {a.status === "open" && <button onClick={() => closeAsk(a.id)} style={{ fontSize: 10, padding: "3px 8px", border: "1px solid #D1D5DB", borderRadius: 4, cursor: "pointer", background: "#fff" }}>✓</button>}
+          {a.status === "open" && <button onClick={() => closeAsk(a.id)} style={{ fontSize: 10, padding: "3px 8px", border: "1px solid #D1D5DB", borderRadius: 4, cursor: "pointer", background: "#fff" }}>✓ Close</button>}
+          <button onClick={() => setConfirmDelete(a)} style={{ fontSize: 10, padding: "3px 8px", border: "1px solid #FCA5A5", borderRadius: 4, cursor: "pointer", background: "#fff", color: "#991B1B" }}>🗑️</button>
         </div>
       </div>
     </Card>)}
   </div>;
 }
 
-function AIMatchTab({ visitors, asks }) {
+function AIMatchTab({ visitors, asks, members }) {
   const [selectedVisitor, setSelectedVisitor] = useState(null);
-  const matches = selectedVisitor ? findMatches(selectedVisitor, asks, MEMBERS) : [];
+  const matches = selectedVisitor ? findMatches(selectedVisitor, asks, members) : [];
 
   return <div>
     <Card style={{ marginBottom: 12, background: "#F5F3FF", borderColor: "#8B5CF6" }}>
@@ -1303,36 +1537,136 @@ function AIMatchTab({ visitors, asks }) {
   </div>;
 }
 
-function MembersTab() {
+// ═══════════════════════════════════════════
+// UPGRADED: MEMBERS TAB — add, edit, delete members
+// ═══════════════════════════════════════════
+function MembersTab({ members, setMembers }) {
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState("");
-  const filtered = MEMBERS.filter(m => {
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState({ name: "", category: "", specialty: "" });
+  const [confirmDelete, setConfirmDelete] = useState(null);
+
+  // Build a category list that includes both existing chapter categories AND the master BNI list
+  const existingCategories = [...new Set(members.map(m => m.category))];
+  const categoryOptions = [...new Set([...existingCategories, ...ALL_BNI_CATEGORIES])].sort();
+
+  const filtered = members.filter(m => {
     const matchSearch = !search || m.name.toLowerCase().includes(search.toLowerCase()) || m.specialty.toLowerCase().includes(search.toLowerCase());
     const matchCat = !filterCat || m.category === filterCat;
     return matchSearch && matchCat;
   });
 
-  return <div>
-    <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-      <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search members..." style={{ flex: 1, padding: "7px 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontSize: 12 }} />
-      <select value={filterCat} onChange={e => setFilterCat(e.target.value)} style={{ padding: "7px 8px", border: "1px solid #D1D5DB", borderRadius: 8, fontSize: 12 }}>
-        <option value="">All Categories</option>
-        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-      </select>
-    </div>
-    <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 8 }}>{filtered.length} members</div>
-    <div style={{ maxHeight: 500, overflowY: "auto" }}>
-      {filtered.map(m => (
-        <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderBottom: "1px solid #F3F4F6", fontSize: 12 }}>
-          <div>
-            <div style={{ fontWeight: 600, color: "#111" }}>{m.name}</div>
-            <div style={{ fontSize: 11, color: "#6B7280" }}>{m.specialty}</div>
+  const addMember = () => {
+    if (!form.name.trim() || !form.category || !form.specialty.trim()) {
+      alert("Please fill in name, category, and specialty.");
+      return;
+    }
+    const newId = members.length > 0 ? Math.max(...members.map(m => m.id)) + 1 : 1;
+    setMembers(p => [...p, { id: newId, name: form.name.trim(), category: form.category, specialty: form.specialty.trim() }]);
+    setForm({ name: "", category: "", specialty: "" });
+    setShowForm(false);
+  };
+
+  const startEdit = (m) => { setEditingId(m.id); setForm({ name: m.name, category: m.category, specialty: m.specialty }); setShowForm(false); };
+  const cancelEdit = () => { setEditingId(null); setForm({ name: "", category: "", specialty: "" }); };
+  const saveEdit = () => {
+    if (!form.name.trim() || !form.category || !form.specialty.trim()) {
+      alert("Please fill in name, category, and specialty.");
+      return;
+    }
+    setMembers(p => p.map(m => m.id === editingId ? { ...m, name: form.name.trim(), category: form.category, specialty: form.specialty.trim() } : m));
+    setEditingId(null);
+    setForm({ name: "", category: "", specialty: "" });
+  };
+
+  const doDelete = () => { setMembers(p => p.filter(m => m.id !== confirmDelete.id)); setConfirmDelete(null); };
+
+  return (
+    <div>
+      <ConfirmModal
+        open={!!confirmDelete}
+        title="Remove this member from the chapter?"
+        message={confirmDelete ? `"${confirmDelete.name}" (${confirmDelete.specialty}) will be removed from your member roster. This cannot be undone. Their existing asks and historical data are kept but will no longer match in AI Match.` : ""}
+        confirmLabel="Yes, remove"
+        onConfirm={doDelete}
+        onCancel={() => setConfirmDelete(null)}
+      />
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+        <span style={{ fontWeight: 700, fontSize: 15 }}>Chapter Members ({members.length})</span>
+        <button
+          onClick={() => { setShowForm(!showForm); cancelEdit(); }}
+          style={{ background: "#8B1A1A", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+          + Add Member
+        </button>
+      </div>
+
+      {(showForm || editingId) && (
+        <Card style={{ marginBottom: 12, background: editingId ? "#FEFCE8" : "#F0FDF4", borderColor: editingId ? "#F59E0B" : "#22C55E" }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: editingId ? "#92400E" : "#15803D", marginBottom: 8 }}>
+            {editingId ? "✏️ Editing member" : "➕ New member"}
           </div>
-          <Badge bg="#F3F4F6" text="#374151" label={m.category} />
-        </div>
-      ))}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div style={{ gridColumn: "span 2" }}>
+              <label style={{ fontSize: 10, fontWeight: 600 }}>Full Name</label>
+              <input value={form.name} onChange={e => setForm(p => ({...p, name: e.target.value}))} style={{ width: "100%", padding: "6px 10px", border: "1px solid #D1D5DB", borderRadius: 6, fontSize: 12, boxSizing: "border-box" }} placeholder="e.g. John Smith" />
+            </div>
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 600 }}>Category</label>
+              <select value={form.category} onChange={e => setForm(p => ({...p, category: e.target.value}))} style={{ width: "100%", padding: "6px 10px", border: "1px solid #D1D5DB", borderRadius: 6, fontSize: 12 }}>
+                <option value="">Select category...</option>
+                {categoryOptions.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 600 }}>Specialty / Classification</label>
+              <input value={form.specialty} onChange={e => setForm(p => ({...p, specialty: e.target.value}))} style={{ width: "100%", padding: "6px 10px", border: "1px solid #D1D5DB", borderRadius: 6, fontSize: 12, boxSizing: "border-box" }} placeholder="e.g. Wealth Management" />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+            {editingId ? (
+              <>
+                <button onClick={saveEdit} style={{ background: "#059669", color: "#fff", border: "none", borderRadius: 8, padding: "7px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>💾 Save Changes</button>
+                <button onClick={cancelEdit} style={{ background: "#fff", color: "#374151", border: "1px solid #D1D5DB", borderRadius: 8, padding: "7px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+              </>
+            ) : (
+              <>
+                <button onClick={addMember} style={{ background: "#059669", color: "#fff", border: "none", borderRadius: 8, padding: "7px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Add to Chapter</button>
+                <button onClick={() => { setShowForm(false); setForm({ name: "", category: "", specialty: "" }); }} style={{ background: "#fff", color: "#374151", border: "1px solid #D1D5DB", borderRadius: 8, padding: "7px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+              </>
+            )}
+          </div>
+        </Card>
+      )}
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search members..." style={{ flex: 1, padding: "7px 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontSize: 12 }} />
+        <select value={filterCat} onChange={e => setFilterCat(e.target.value)} style={{ padding: "7px 8px", border: "1px solid #D1D5DB", borderRadius: 8, fontSize: 12 }}>
+          <option value="">All Categories</option>
+          {existingCategories.sort().map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+      <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 8 }}>{filtered.length} members shown</div>
+      <div style={{ maxHeight: 500, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 10, background: "#fff" }}>
+        {filtered.map(m => (
+          <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderBottom: "1px solid #F3F4F6", fontSize: 12 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, color: "#111" }}>{m.name}</div>
+              <div style={{ fontSize: 11, color: "#6B7280" }}>{m.specialty}</div>
+            </div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+              <Badge bg="#F3F4F6" text="#374151" label={m.category} />
+              <button onClick={() => startEdit(m)} style={{ background: "#FEF3C7", border: "1px solid #FCD34D", color: "#92400E", borderRadius: 6, padding: "3px 8px", fontSize: 10, cursor: "pointer", fontWeight: 700 }}>✏️</button>
+              <button onClick={() => setConfirmDelete(m)} style={{ background: "#fff", border: "1px solid #FCA5A5", color: "#991B1B", borderRadius: 6, padding: "3px 8px", fontSize: 10, cursor: "pointer", fontWeight: 700 }}>🗑️</button>
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && <div style={{ padding: 20, textAlign: "center", color: "#9CA3AF", fontSize: 12 }}>No members match your filter.</div>}
+      </div>
     </div>
-  </div>;
+  );
 }
 
 function FollowUpTab({ visitors, setVisitors }) {
@@ -1379,53 +1713,32 @@ function FollowUpTab({ visitors, setVisitors }) {
 // ═══════════════════════════════════════════
 export default function App() {
   const [tab, setTab] = useState(0);
-  const [visitors, setVisitors] = useState([]);
-  const [asks, setAsks] = useState([]);
-
-  useEffect(() => {
-    const loadData = async () => {
-      const { data: visitorsData } = await supabase.from('visitors').select('*');
-      const { data: asksData } = await supabase.from('asks').select('*');
-      if (visitorsData) setVisitors(visitorsData.map(v => ({
-        ...v,
-        invitedBy: v.invited_by,
-        callNotes: v.call_notes,
-        seatAssignment: v.seat_assignment,
-        followUpResponse: v.follow_up_response,
-      })));
-      if (asksData) setAsks(asksData.map(a => ({
-        ...a,
-        memberId: a.member_id,
-        memberName: a.member_name,
-        askType: a.ask_type,
-        targetName: a.target_name,
-        targetCompany: a.target_company,
-        targetCategory: a.target_category,
-        targetRole: a.target_role,
-      })));
-    };
-    loadData();
-  }, []);
+  const [visitors, setVisitors] = useState(INITIAL_VISITORS);
+  const [asks, setAsks] = useState(INITIAL_ASKS);
+  const [members, setMembers] = useState(INITIAL_MEMBERS);
+  const [archived, setArchived] = useState([]);
 
   const tabs = [
-    <DashboardTab visitors={visitors} asks={asks} />,
-    <VisitorsTab visitors={visitors} setVisitors={setVisitors} asks={asks} />,
-    <AsksTab asks={asks} setAsks={setAsks} />,
-    <AIMatchTab visitors={visitors} asks={asks} />,
-    <SeatPlanner visitors={visitors} asks={asks} />,
-    <MembersTab />,
+    <DashboardTab visitors={visitors} asks={asks} members={members} archived={archived} />,
+    <VisitorsTab visitors={visitors} setVisitors={setVisitors} asks={asks} members={members} archived={archived} setArchived={setArchived} />,
+    <AsksTab asks={asks} setAsks={setAsks} members={members} />,
+    <AIMatchTab visitors={visitors} asks={asks} members={members} />,
+    <SeatPlanner visitors={visitors} asks={asks} members={members} />,
+    <MembersTab members={members} setMembers={setMembers} />,
+    <ArchiveTab archived={archived} setArchived={setArchived} visitors={visitors} setVisitors={setVisitors} />,
     <FollowUpTab visitors={visitors} setVisitors={setVisitors} />,
   ];
 
   return <div style={{ fontFamily: "'Segoe UI', -apple-system, sans-serif", background: "#F9FAFB", minHeight: "100vh" }}>
     <div style={{ background: "linear-gradient(135deg, #8B1A1A 0%, #1B2A4A 100%)", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
       <div>
-        <div style={{ color: "#fff", fontSize: 17, fontWeight: 800, letterSpacing: -0.5 }}>BNI Insomniacs</div>
-        <div style={{ color: "#FFD4D4", fontSize: 10 }}>Visitor Host Command Centre • {MEMBERS.length} Members</div>
+        <div style={{ color: "#fff", fontSize: 17, fontWeight: 800, letterSpacing: -0.5 }}>BNI Insomniacs <span style={{ fontSize: 10, fontWeight: 700, background: "rgba(255,255,255,0.2)", padding: "2px 6px", borderRadius: 8, marginLeft: 6, verticalAlign: "middle" }}>v2</span></div>
+        <div style={{ color: "#FFD4D4", fontSize: 10 }}>Visitor Host Command Centre • {members.length} Members</div>
       </div>
       <div style={{ display: "flex", gap: 12, color: "#FFD4D4", fontSize: 11 }}>
         <span>👥 {visitors.filter(v => v.date === "2026-04-08").length} this week</span>
         <span>🎯 {asks.filter(a => a.status === "open").length} open asks</span>
+        <span>🗄️ {archived.length} archived</span>
       </div>
     </div>
 
