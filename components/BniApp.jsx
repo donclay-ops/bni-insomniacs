@@ -99,7 +99,7 @@ const INITIAL_MEMBERS = [
   { id:87, name:"Umang Bhartia", category:"Transport & Shipping", specialty:"Courier Delivery Service" },
   { id:88, name:"Veena Muralidharan", category:"Transport & Shipping", specialty:"Freight Forwarding/Logistics" },
   { id:89, name:"Zankhana Mistry", category:"Health & Wellness", specialty:"Health & Wellness Services" },
-];
+].map(m => ({ ...m, businessUnderstanding: m.businessUnderstanding || "", connectorStrength: m.connectorStrength || "" }));
 
 // Master list of all known BNI categories so the user can pick from a sensible list
 const ALL_BNI_CATEGORIES = [
@@ -257,7 +257,12 @@ Write a briefing in this exact JSON structure (no markdown, pure JSON):
 
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
           max_tokens: 1000,
@@ -344,68 +349,93 @@ Write a briefing in this exact JSON structure (no markdown, pure JSON):
 }
 
 // ═══════════════════════════════════════════
-// NEW: AI VISITOR VALIDATION COMPONENT
-// Checks suitability — category conflicts with current members, red flags, fit score
+// AI ANALYZE CONNECTIONS COMPONENT
+// For each visitor: identify ask-match members + strong connectors across all 89 members
+// Uses ALL asks regardless of status, and free-text member context fields
 // ═══════════════════════════════════════════
-function VisitorValidation({ visitor, members, onValidationSaved }) {
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(visitor.validation || null);
+function AnalyzeConnections({ visitor, members, asks, onAnalysisSaved }) {
+  const [loading, setLoading] = useState(!visitor.analysis);  // start loading immediately if no cached result
+  const [result, setResult] = useState(visitor.analysis || null);
   const [error, setError] = useState(null);
 
-  const validate = async () => {
+  // Auto-trigger analysis when panel opens if no cached result
+  useEffect(() => {
+    if (!visitor.analysis) analyze();
+  }, []);
+
+  const analyze = async () => {
     setLoading(true);
     setError(null);
     try {
-      // Build a snapshot of current members in the visitor's category — this is the conflict check
-      const sameCategoryMembers = members
-        .filter(m => m.category.toLowerCase() === (visitor.category || "").toLowerCase())
-        .map(m => `${m.name} — ${m.specialty}`);
+      // Build full member list with all context fields — all 89 members
+      const memberList = members.map(m => {
+        let line = `${m.name} | ${m.category} | ${m.specialty}`;
+        if (m.businessUnderstanding) line += ` | Understands: ${m.businessUnderstanding}`;
+        if (m.connectorStrength) line += ` | Connects well with: ${m.connectorStrength}`;
+        return line;
+      }).join("\n");
 
-      const allCategoriesInChapter = [...new Set(members.map(m => m.category))].sort();
+      // ALL asks — no status filter (historical asks still matter)
+      const askList = asks.length > 0 ? asks.map(a => {
+        const target = a.askType === "specific_person" ? `Person: ${a.targetName}${a.targetCompany ? ` from ${a.targetCompany}` : ""}` :
+                       a.askType === "specific_company" ? `Company: ${a.targetCompany}` :
+                       `Role: ${a.targetRole}`;
+        return `${a.memberName} | ${target} | Category: ${a.targetCategory || "—"} | Notes: ${a.notes || "—"} | Date: ${a.date} | Status: ${a.status}`;
+      }).join("\n") : "(no asks recorded)";
 
-      const prompt = `You are the BNI Insomniacs Dubai Membership Committee assistant. Your job is to validate whether a prospective visitor is a SUITABLE FIT for the chapter, based on BNI's "one person per professional classification" rule and general chapter health.
+      const prompt = `You are a BNI Insomniacs Dubai Visitor Host assistant. Your job is to identify practical, real-room introduction opportunities for a visiting guest so the Visitor Host knows exactly who to connect them with during and after the meeting.
 
-VISITOR DETAILS:
-- Name: ${visitor.name}
-- Business: ${visitor.business}
-- Category: ${visitor.category || "NOT SPECIFIED"}
-- Specialty / Classification: ${visitor.specialty || "NOT SPECIFIED"}
-- Invited by: ${visitor.invitedBy || "walk-in (not invited)"}
-- Phone: ${visitor.phone || "not provided"}
-- Email: ${visitor.email || "not provided"}
-- Notes from intake call: ${visitor.callNotes || "none"}
+VISITOR:
+Name: ${visitor.name}
+Business: ${visitor.business}
+Category: ${visitor.category || "not specified"}
+Specialty: ${visitor.specialty || "not specified"}
+Invited By: ${visitor.invitedBy || "walk-in"}
+Call Notes: ${visitor.callNotes || "none"}
 
-CURRENT CHAPTER MEMBERS IN VISITOR'S CATEGORY (potential conflicts):
-${sameCategoryMembers.length > 0 ? sameCategoryMembers.join("\n") : "(none — category is OPEN in the chapter)"}
+CHAPTER MEMBERS — all ${members.length} members (name | category | specialty | business understanding | connector strength):
+${memberList}
 
-ALL CATEGORIES PRESENT IN CHAPTER:
-${allCategoriesInChapter.join(", ")}
+ALL MEMBER ASKS — all statuses including historical (member | target | category | notes | date | status):
+${askList}
 
-Evaluate the visitor and return ONLY valid JSON in this exact structure (no markdown, no code fences):
+Your task:
+a) ASK MATCHES: Identify up to 2 members whose asks most directly align with this visitor. An ask match means the visitor's business, category, specialty, or background is exactly what the member has been looking for — even if the ask is older or fulfilled. Historical asks are valid signals.
+b) GOOD CONNECTORS: Identify up to 2 members who would be strong connectors for this visitor, based on their business understanding and connector strength. These members know how to open doors for or introduce this type of visitor, even without a direct ask match.
+c) Try to avoid listing the same member in both sections unless truly unavoidable.
+d) Write a short, practical host note (2-3 sentences) that the Visitor Host can use immediately.
+e) Write a one-line print summary suitable for the printed visitor list.
+
+Return ONLY valid JSON with no markdown or code fences:
 {
-  "verdict": "GREEN" | "AMBER" | "RED",
-  "fitScore": <number 0-100>,
-  "headline": "One short sentence summarising the verdict",
-  "classificationCheck": {
-    "status": "OPEN" | "CONFLICT" | "OVERLAP_RISK",
-    "explanation": "Specific explanation. If OPEN, say no member currently holds this classification. If CONFLICT, name the member(s) who already hold it. If OVERLAP_RISK, explain the partial overlap and how it might be resolved (e.g., narrowing the specialty)."
-  },
-  "strengths": ["specific positive 1", "specific positive 2", "specific positive 3"],
-  "concerns": ["specific concern 1 if any", "specific concern 2 if any"],
-  "redFlags": ["actual red flags only — leave empty array if none"],
-  "referralPotential": "Realistic 1-2 sentence assessment of how much referral business this visitor's category could generate FROM and TO the existing chapter members",
-  "recommendation": "One of: 'Strongly recommend inviting back', 'Recommend inviting back', 'Invite back with caution — discuss classification first', 'Do not invite back', 'Needs more information'",
-  "nextSteps": ["specific action 1 for the Visitor Host or Membership Committee", "specific action 2"]
+  "askMatches": [
+    { "memberName": "...", "reason": "..." }
+  ],
+  "goodConnectors": [
+    { "memberName": "...", "reason": "..." }
+  ],
+  "hostNote": "...",
+  "printSummary": "..."
 }
 
-Be honest and specific. If information is missing (no category, no business name, no inviter), flag it. If there is a clear classification conflict with an existing member, the verdict must be RED or AMBER — never GREEN.`;
+Rules:
+- Maximum 2 askMatches, maximum 2 goodConnectors
+- Reasons must be short (1-2 sentences), specific, and immediately actionable
+- Focus on real BNI room value — who to seat them next to, who to introduce first
+- If no good ask match exists, return an empty askMatches array
+- If no good connector exists, return an empty goodConnectors array`;
 
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
-          max_tokens: 1200,
+          max_tokens: 900,
           messages: [{ role: "user", content: prompt }]
         })
       });
@@ -414,123 +444,77 @@ Be honest and specific. If information is missing (no category, no business name
       const clean = text.replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(clean);
       setResult(parsed);
-      onValidationSaved(visitor.id, parsed);
+      onAnalysisSaved(visitor.id, parsed);
     } catch (e) {
-      setError("Could not validate. Please try again.");
+      setError("Could not analyze connections. Please try again.");
     }
     setLoading(false);
   };
 
-  const verdictStyle = (v) => {
-    if (v === "GREEN") return { bg: "#D1FAE5", border: "#10B981", text: "#065F46", icon: "✅" };
-    if (v === "AMBER") return { bg: "#FEF3C7", border: "#F59E0B", text: "#92400E", icon: "⚠️" };
-    if (v === "RED") return { bg: "#FEE2E2", border: "#EF4444", text: "#991B1B", icon: "🛑" };
-    return { bg: "#F3F4F6", border: "#9CA3AF", text: "#374151", icon: "❓" };
-  };
-
-  if (!result && !loading) return (
-    <button onClick={validate} style={{
-      background: "linear-gradient(135deg, #047857, #065F46)", color: "#fff",
-      border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 12,
-      fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6
-    }}>
-      🛡️ Validate Visitor Fit
-    </button>
-  );
-
   if (loading) return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#065F46", fontSize: 12, padding: "8px 0" }}>
-      <div style={{ width: 16, height: 16, border: "2px solid #047857", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-      Validating fit against chapter…
+    <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#4338CA", fontSize: 12, padding: "8px 0" }}>
+      <div style={{ width: 16, height: 16, border: "2px solid #4338CA", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      Analyzing connections across {members.length} members…
     </div>
   );
 
-  if (error) return <div style={{ color: "#991B1B", fontSize: 12 }}>{error} <button onClick={validate} style={{ textDecoration: "underline", background: "none", border: "none", cursor: "pointer", color: "#991B1B" }}>Retry</button></div>;
+  if (error) return <div style={{ color: "#991B1B", fontSize: 12 }}>{error} <button onClick={analyze} style={{ textDecoration: "underline", background: "none", border: "none", cursor: "pointer", color: "#991B1B" }}>Retry</button></div>;
 
-  const vs = verdictStyle(result.verdict);
+  if (!result) return null;
 
   return (
     <div style={{ marginTop: 10 }}>
-      <div style={{ background: vs.bg, border: `2px solid ${vs.border}`, borderRadius: 12, padding: 14 }}>
+      <div style={{ background: "#EEF2FF", border: "2px solid #818CF8", borderRadius: 12, padding: 14 }}>
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-              <span style={{ fontSize: 18 }}>{vs.icon}</span>
-              <span style={{ fontSize: 14, fontWeight: 900, color: vs.text, letterSpacing: -0.3 }}>
-                Verdict: {result.verdict}
-              </span>
-              <span style={{ background: "#fff", color: vs.text, fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 12, border: `1px solid ${vs.border}` }}>
-                Fit Score: {result.fitScore}/100
-              </span>
-            </div>
-            <div style={{ fontSize: 12, color: vs.text, lineHeight: 1.5, fontWeight: 600 }}>{result.headline}</div>
-          </div>
-          <button onClick={() => { setResult(null); onValidationSaved(visitor.id, null); }} style={{ background: "#fff", border: `1px solid ${vs.border}`, borderRadius: 6, padding: "3px 8px", fontSize: 10, color: vs.text, cursor: "pointer", flexShrink: 0 }}>↺ Re-run</button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#3730A3", letterSpacing: -0.3 }}>🔗 Connection Analysis</div>
+          <button onClick={() => { setResult(null); onAnalysisSaved(visitor.id, null); }} style={{ background: "#fff", border: "1px solid #818CF8", borderRadius: 6, padding: "3px 8px", fontSize: 10, color: "#4338CA", cursor: "pointer" }}>↺ Re-run</button>
         </div>
 
-        {/* Classification check — most important block */}
-        <div style={{ background: "#fff", borderRadius: 8, padding: 10, marginBottom: 8, borderLeft: `4px solid ${vs.border}` }}>
-          <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#6B7280", marginBottom: 4, fontWeight: 700 }}>Classification Check</div>
-          <div style={{ fontSize: 12, fontWeight: 800, color: result.classificationCheck?.status === "OPEN" ? "#065F46" : result.classificationCheck?.status === "CONFLICT" ? "#991B1B" : "#92400E", marginBottom: 3 }}>
-            {result.classificationCheck?.status === "OPEN" && "✓ Category is OPEN"}
-            {result.classificationCheck?.status === "CONFLICT" && "✗ CONFLICT with existing member"}
-            {result.classificationCheck?.status === "OVERLAP_RISK" && "⚠ Overlap risk"}
-          </div>
-          <div style={{ fontSize: 11, color: "#374151", lineHeight: 1.6 }}>{result.classificationCheck?.explanation}</div>
-        </div>
+        {/* Two mini-sections: Ask Matches + Good Connectors */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
 
-        {/* Two-column: Strengths + Concerns */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-          <div style={{ background: "#fff", borderRadius: 8, padding: 10 }}>
-            <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#065F46", marginBottom: 4, fontWeight: 700 }}>👍 Strengths</div>
-            {result.strengths?.length > 0 ? result.strengths.map((s, i) => (
-              <div key={i} style={{ fontSize: 11, color: "#374151", lineHeight: 1.5, marginBottom: 3, display: "flex", gap: 5 }}>
-                <span style={{ color: "#10B981", fontWeight: 800 }}>+</span><span>{s}</span>
+          {/* Ask Matches */}
+          <div style={{ background: "#fff", borderRadius: 8, padding: 10, borderLeft: "4px solid #F59E0B" }}>
+            <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#B45309", marginBottom: 6, fontWeight: 800 }}>🎯 Ask Matches</div>
+            {result.askMatches?.length > 0 ? result.askMatches.map((m, i) => (
+              <div key={i} style={{ marginBottom: i < result.askMatches.length - 1 ? 8 : 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#111" }}>{m.memberName}</div>
+                <div style={{ fontSize: 11, color: "#6B7280", lineHeight: 1.5, marginTop: 2 }}>{m.reason}</div>
               </div>
-            )) : <div style={{ fontSize: 11, color: "#9CA3AF" }}>—</div>}
+            )) : (
+              <div style={{ fontSize: 11, color: "#9CA3AF", fontStyle: "italic" }}>No direct ask matches found</div>
+            )}
           </div>
-          <div style={{ background: "#fff", borderRadius: 8, padding: 10 }}>
-            <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#92400E", marginBottom: 4, fontWeight: 700 }}>⚠ Concerns</div>
-            {result.concerns?.length > 0 ? result.concerns.map((c, i) => (
-              <div key={i} style={{ fontSize: 11, color: "#374151", lineHeight: 1.5, marginBottom: 3, display: "flex", gap: 5 }}>
-                <span style={{ color: "#F59E0B", fontWeight: 800 }}>!</span><span>{c}</span>
+
+          {/* Good Connectors */}
+          <div style={{ background: "#fff", borderRadius: 8, padding: 10, borderLeft: "4px solid #6366F1" }}>
+            <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#4338CA", marginBottom: 6, fontWeight: 800 }}>🤝 Good Connectors</div>
+            {result.goodConnectors?.length > 0 ? result.goodConnectors.map((m, i) => (
+              <div key={i} style={{ marginBottom: i < result.goodConnectors.length - 1 ? 8 : 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#111" }}>{m.memberName}</div>
+                <div style={{ fontSize: 11, color: "#6B7280", lineHeight: 1.5, marginTop: 2 }}>{m.reason}</div>
               </div>
-            )) : <div style={{ fontSize: 11, color: "#9CA3AF" }}>None flagged</div>}
+            )) : (
+              <div style={{ fontSize: 11, color: "#9CA3AF", fontStyle: "italic" }}>No connector recommendations</div>
+            )}
           </div>
         </div>
 
-        {/* Red flags — only if any */}
-        {result.redFlags?.length > 0 && (
-          <div style={{ background: "#fff", border: "1px solid #EF4444", borderRadius: 8, padding: 10, marginBottom: 8 }}>
-            <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#991B1B", marginBottom: 4, fontWeight: 700 }}>🚩 Red Flags</div>
-            {result.redFlags.map((rf, i) => (
-              <div key={i} style={{ fontSize: 11, color: "#991B1B", lineHeight: 1.5, marginBottom: 2 }}>• {rf}</div>
-            ))}
+        {/* Host Note */}
+        {result.hostNote && (
+          <div style={{ background: "#fff", borderRadius: 8, padding: 10, borderLeft: "4px solid #818CF8", marginBottom: 6 }}>
+            <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#6B7280", marginBottom: 4, fontWeight: 700 }}>📋 Host Note</div>
+            <div style={{ fontSize: 11, color: "#374151", lineHeight: 1.6 }}>{result.hostNote}</div>
           </div>
         )}
 
-        {/* Referral potential */}
-        <div style={{ background: "#fff", borderRadius: 8, padding: 10, marginBottom: 8 }}>
-          <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#6B7280", marginBottom: 4, fontWeight: 700 }}>💼 Referral Potential</div>
-          <div style={{ fontSize: 11, color: "#374151", lineHeight: 1.6 }}>{result.referralPotential}</div>
-        </div>
-
-        {/* Recommendation — highlighted */}
-        <div style={{ background: vs.text, color: "#fff", borderRadius: 8, padding: 10, marginBottom: 8 }}>
-          <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "rgba(255,255,255,0.7)", marginBottom: 3, fontWeight: 700 }}>📋 Recommendation</div>
-          <div style={{ fontSize: 13, fontWeight: 800, lineHeight: 1.5 }}>{result.recommendation}</div>
-        </div>
-
-        {/* Next steps */}
-        <div style={{ background: "#fff", borderRadius: 8, padding: 10 }}>
-          <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#6B7280", marginBottom: 4, fontWeight: 700 }}>👉 Next Steps</div>
-          {result.nextSteps?.map((ns, i) => (
-            <div key={i} style={{ fontSize: 11, color: "#374151", lineHeight: 1.5, marginBottom: 3, display: "flex", gap: 5 }}>
-              <span style={{ color: vs.border, fontWeight: 800 }}>{i + 1}.</span><span>{ns}</span>
-            </div>
-          ))}
-        </div>
+        {/* Print summary */}
+        {result.printSummary && (
+          <div style={{ fontSize: 10, color: "#6B7280", fontStyle: "italic", marginTop: 4 }}>
+            <strong>Print summary:</strong> {result.printSummary}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -733,7 +717,6 @@ function PrintableVisitorList({ visitors, meetingDate, asks, members }) {
     const d = new Date(meetingDate + "T00:00:00");
     return d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   })();
-  const getTopMatches = (v) => findMatches(v, asks, members).filter(m => m.score >= 50).slice(0, 2);
   const WALK_IN_ROWS = 3;
   const SUBSTITUTE_ROWS = 8;
   const TH = { padding: "8px 8px", textAlign: "left", fontWeight: 800, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.3 };
@@ -765,12 +748,15 @@ function PrintableVisitorList({ visitors, meetingDate, asks, members }) {
             <th style={{ ...TH, width: "13%" }}>Category</th>
             <th style={{ ...TH, width: "11%" }}>Invited By</th>
             <th style={{ ...TH, width: "12%" }}>Phone</th>
-            <th style={{ ...TH }}>BNI Matches — Introduce To</th>
+            <th style={{ ...TH, width: "22%" }}>🎯 Ask Matches</th>
+            <th style={{ ...TH }}>🤝 Good Connectors</th>
           </tr>
         </thead>
         <tbody>
           {visitors.map((v, i) => {
-            const topMatches = getTopMatches(v);
+            const analysis = v.analysis || null;
+            const askMatches = analysis?.askMatches || [];
+            const goodConnectors = analysis?.goodConnectors || [];
             return (
               <tr key={v.id} style={{ background: i % 2 === 0 ? "#fff" : "#F7F8FB", borderBottom: "1px solid #D1D5DB", verticalAlign: "top" }}>
                 <td style={{ padding: "9px 8px", color: "#9CA3AF", fontWeight: 700, fontSize: 12 }}>{i + 1}</td>
@@ -787,17 +773,31 @@ function PrintableVisitorList({ visitors, meetingDate, asks, members }) {
                 </td>
                 <td style={{ padding: "9px 8px", color: "#374151", fontSize: 12 }}>{v.invitedBy || "—"}</td>
                 <td style={{ padding: "9px 8px", color: "#374151", fontSize: 11 }}>{v.phone || "—"}</td>
+                {/* Ask Matches */}
                 <td style={{ padding: "9px 8px" }}>
-                  {topMatches.length === 0 ? <span style={{ color: "#9CA3AF", fontSize: 11 }}>—</span> : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      {topMatches.map((m, mi) => (
-                        <div key={mi} style={{ display: "flex", alignItems: "flex-start", gap: 5 }}>
-                          <div style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, marginTop: 3, background: m.score >= 90 ? "#EF4444" : m.score >= 70 ? "#F59E0B" : "#3B82F6" }} />
-                          <div>
-                            <span style={{ fontWeight: 800, fontSize: 11, color: "#111" }}>{m.member?.name}</span>
-                            <span style={{ fontSize: 10, color: "#6B7280", marginLeft: 4 }}>{m.type === "ask" ? "★ Ask" : "Contact Sphere"}</span>
-                            <div style={{ fontSize: 10, color: "#9CA3AF" }}>{m.member?.specialty}</div>
-                          </div>
+                  {askMatches.length === 0 ? (
+                    <span style={{ color: "#9CA3AF", fontSize: 10, fontStyle: "italic" }}>{analysis ? "No matches" : "—"}</span>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      {askMatches.map((m, mi) => (
+                        <div key={mi}>
+                          <div style={{ fontWeight: 800, fontSize: 11, color: "#B45309" }}>{m.memberName}</div>
+                          <div style={{ fontSize: 10, color: "#6B7280", lineHeight: 1.4 }}>{m.reason}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </td>
+                {/* Good Connectors */}
+                <td style={{ padding: "9px 8px" }}>
+                  {goodConnectors.length === 0 ? (
+                    <span style={{ color: "#9CA3AF", fontSize: 10, fontStyle: "italic" }}>{analysis ? "None" : "—"}</span>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      {goodConnectors.map((m, mi) => (
+                        <div key={mi}>
+                          <div style={{ fontWeight: 800, fontSize: 11, color: "#4338CA" }}>{m.memberName}</div>
+                          <div style={{ fontSize: 10, color: "#6B7280", lineHeight: 1.4 }}>{m.reason}</div>
                         </div>
                       ))}
                     </div>
@@ -815,6 +815,7 @@ function PrintableVisitorList({ visitors, meetingDate, asks, members }) {
                 <div style={{ fontSize: 9, color: "#D97706", fontWeight: 700, marginBottom: 2 }}>WALK-IN</div>
                 <div style={{ height: 18 }} />
               </td>
+              <td style={{ padding: "12px 8px", borderBottom: "1px dotted #FCD34D" }}>&nbsp;</td>
               <td style={{ padding: "12px 8px", borderBottom: "1px dotted #FCD34D" }}>&nbsp;</td>
               <td style={{ padding: "12px 8px", borderBottom: "1px dotted #FCD34D" }}>&nbsp;</td>
               <td style={{ padding: "12px 8px", borderBottom: "1px dotted #FCD34D" }}>&nbsp;</td>
@@ -926,7 +927,7 @@ function VisitorsTab({ visitors, setVisitors, asks, members, archived, setArchiv
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [confirmArchive, setConfirmArchive] = useState(null);
   const [showPrintModal, setShowPrintModal] = useState(false);
-  const [activePanel, setActivePanel] = useState({});  // { [visitorId]: 'brief' | 'validate' }
+  const [activePanel, setActivePanel] = useState({});  // { [visitorId]: 'brief' | 'analyze' }
 
   const allCategoriesPresent = [...new Set(members.map(m => m.category))].sort();
 
@@ -963,7 +964,7 @@ function VisitorsTab({ visitors, setVisitors, asks, members, archived, setArchiv
     await supabase.from("visitors").update({ bio }).eq("id", id);
     setVisitors(p => p.map(v => v.id === id ? { ...v, bio } : v));
   };
-  const saveValidation = (id, validation) => setVisitors(p => p.map(v => v.id === id ? { ...v, validation } : v));
+  const saveAnalysis = (id, analysis) => setVisitors(p => p.map(v => v.id === id ? { ...v, analysis } : v));
 
   const startEdit = (v) => { setEditingId(v.id); setEditForm({ ...v }); setExpandedId(null); };
   const cancelEdit = () => { setEditingId(null); setEditForm({}); };
@@ -1059,12 +1060,8 @@ function VisitorsTab({ visitors, setVisitors, asks, members, archived, setArchiv
       {visitors.map(v => {
         const isExpanded = expandedId === v.id;
         const isEditing = editingId === v.id;
-        const topMatch = findMatches(v, asks, members)[0];
-        const verdict = v.validation?.verdict;
-        const verdictBadge = verdict === "GREEN" ? { bg: "#D1FAE5", text: "#065F46", label: "✅ Green" } :
-                             verdict === "AMBER" ? { bg: "#FEF3C7", text: "#92400E", label: "⚠️ Amber" } :
-                             verdict === "RED"   ? { bg: "#FEE2E2", text: "#991B1B", label: "🛑 Red" } : null;
-        const panel = activePanel[v.id]; // 'brief' or 'validate'
+        const hasAnalysis = !!v.analysis;
+        const panel = activePanel[v.id]; // 'brief' or 'analyze'
 
         if (isEditing) {
           return (
@@ -1119,10 +1116,7 @@ function VisitorsTab({ visitors, setVisitors, asks, members, archived, setArchiv
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <div style={{ fontWeight: 700, fontSize: 13 }}>{v.name}</div>
                   {v.bio && <span style={{ background: "#EEF2FF", color: "#4338CA", fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 20 }}>✦ Briefed</span>}
-                  {verdictBadge && <span style={{ background: verdictBadge.bg, color: verdictBadge.text, fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 20 }}>{verdictBadge.label}</span>}
-                  {topMatch && <span style={{ background: topMatch.score >= 70 ? "#FEF3C7" : "#DBEAFE", color: topMatch.score >= 70 ? "#92400E" : "#1E40AF", fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 20 }}>
-                    → {topMatch.member?.name.split(" ")[0]}
-                  </span>}
+                  {hasAnalysis && <span style={{ background: "#EEF2FF", color: "#3730A3", fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 20 }}>🔗 Analyzed</span>}
                 </div>
                 <div style={{ fontSize: 11, color: "#6B7280" }}>{v.business} • {v.category || "—"}</div>
                 <div style={{ fontSize: 10, color: "#9CA3AF" }}>Invited by {v.invitedBy || "—"} • {v.date}</div>
@@ -1143,9 +1137,9 @@ function VisitorsTab({ visitors, setVisitors, asks, members, archived, setArchiv
                 ✨ Brief
               </button>
               <button
-                onClick={() => { setExpandedId(isExpanded && panel === "validate" ? null : v.id); setActivePanel(p => ({ ...p, [v.id]: "validate" })); }}
-                style={{ background: panel === "validate" && isExpanded ? "#D1FAE5" : "#F9FAFB", border: "1px solid #6EE7B7", color: "#065F46", borderRadius: 6, padding: "5px 10px", fontSize: 11, cursor: "pointer", fontWeight: 700 }}>
-                🛡️ Validate
+                onClick={() => { setExpandedId(isExpanded && panel === "analyze" ? null : v.id); setActivePanel(p => ({ ...p, [v.id]: "analyze" })); }}
+                style={{ background: panel === "analyze" && isExpanded ? "#EEF2FF" : "#F9FAFB", border: "1px solid #818CF8", color: "#3730A3", borderRadius: 6, padding: "5px 10px", fontSize: 11, cursor: "pointer", fontWeight: 700 }}>
+                🔗 Analyze Connections
               </button>
               <button
                 onClick={() => startEdit(v)}
@@ -1169,9 +1163,9 @@ function VisitorsTab({ visitors, setVisitors, asks, members, archived, setArchiv
                 <VisitorIntelligence visitor={v} onBioSaved={saveBio} />
               </div>
             )}
-            {isExpanded && panel === "validate" && (
+            {isExpanded && panel === "analyze" && (
               <div style={{ marginTop: 10, borderTop: "1px solid #F3F4F6", paddingTop: 10 }}>
-                <VisitorValidation visitor={v} members={members} onValidationSaved={saveValidation} />
+                <AnalyzeConnections visitor={v} members={members} asks={asks} onAnalysisSaved={saveAnalysis} />
               </div>
             )}
           </Card>
@@ -1366,11 +1360,9 @@ function ArchiveTab({ archived, setArchived, visitors, setVisitors }) {
                     <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                       <span style={{ fontWeight: 700, fontSize: 12 }}>{v.name}</span>
                       <StatusBadge status={v.status} />
-                      {v.validation?.verdict && (
-                        <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 8,
-                          background: v.validation.verdict === "GREEN" ? "#D1FAE5" : v.validation.verdict === "AMBER" ? "#FEF3C7" : "#FEE2E2",
-                          color: v.validation.verdict === "GREEN" ? "#065F46" : v.validation.verdict === "AMBER" ? "#92400E" : "#991B1B" }}>
-                          {v.validation.verdict}
+                      {v.analysis && (
+                        <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 8, background: "#EEF2FF", color: "#3730A3" }}>
+                          🔗 Analyzed
                         </span>
                       )}
                     </div>
@@ -1572,7 +1564,7 @@ function MembersTab({ members, setMembers }) {
   const [filterCat, setFilterCat] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState({ name: "", category: "", specialty: "" });
+  const [form, setForm] = useState({ name: "", category: "", specialty: "", businessUnderstanding: "", connectorStrength: "" });
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   // Build a category list that includes both existing chapter categories AND the master BNI list
@@ -1591,21 +1583,21 @@ function MembersTab({ members, setMembers }) {
       return;
     }
     const newId = members.length > 0 ? Math.max(...members.map(m => m.id)) + 1 : 1;
-    setMembers(p => [...p, { id: newId, name: form.name.trim(), category: form.category, specialty: form.specialty.trim() }]);
-    setForm({ name: "", category: "", specialty: "" });
+    setMembers(p => [...p, { id: newId, name: form.name.trim(), category: form.category, specialty: form.specialty.trim(), businessUnderstanding: form.businessUnderstanding.trim(), connectorStrength: form.connectorStrength.trim() }]);
+    setForm({ name: "", category: "", specialty: "", businessUnderstanding: "", connectorStrength: "" });
     setShowForm(false);
   };
 
-  const startEdit = (m) => { setEditingId(m.id); setForm({ name: m.name, category: m.category, specialty: m.specialty }); setShowForm(false); };
-  const cancelEdit = () => { setEditingId(null); setForm({ name: "", category: "", specialty: "" }); };
+  const startEdit = (m) => { setEditingId(m.id); setForm({ name: m.name, category: m.category, specialty: m.specialty, businessUnderstanding: m.businessUnderstanding || "", connectorStrength: m.connectorStrength || "" }); setShowForm(false); };
+  const cancelEdit = () => { setEditingId(null); setForm({ name: "", category: "", specialty: "", businessUnderstanding: "", connectorStrength: "" }); };
   const saveEdit = () => {
     if (!form.name.trim() || !form.category || !form.specialty.trim()) {
       alert("Please fill in name, category, and specialty.");
       return;
     }
-    setMembers(p => p.map(m => m.id === editingId ? { ...m, name: form.name.trim(), category: form.category, specialty: form.specialty.trim() } : m));
+    setMembers(p => p.map(m => m.id === editingId ? { ...m, name: form.name.trim(), category: form.category, specialty: form.specialty.trim(), businessUnderstanding: form.businessUnderstanding.trim(), connectorStrength: form.connectorStrength.trim() } : m));
     setEditingId(null);
-    setForm({ name: "", category: "", specialty: "" });
+    setForm({ name: "", category: "", specialty: "", businessUnderstanding: "", connectorStrength: "" });
   };
 
   const doDelete = () => { setMembers(p => p.filter(m => m.id !== confirmDelete.id)); setConfirmDelete(null); };
@@ -1650,6 +1642,14 @@ function MembersTab({ members, setMembers }) {
             <div>
               <label style={{ fontSize: 10, fontWeight: 600 }}>Specialty / Classification</label>
               <input value={form.specialty} onChange={e => setForm(p => ({...p, specialty: e.target.value}))} style={{ width: "100%", padding: "6px 10px", border: "1px solid #D1D5DB", borderRadius: 6, fontSize: 12, boxSizing: "border-box" }} placeholder="e.g. Wealth Management" />
+            </div>
+            <div style={{ gridColumn: "span 2" }}>
+              <label style={{ fontSize: 10, fontWeight: 600 }}>Business Understanding <span style={{ color: "#9CA3AF", fontWeight: 400 }}>(what types of businesses, founders, industries this member understands well)</span></label>
+              <textarea value={form.businessUnderstanding} onChange={e => setForm(p => ({...p, businessUnderstanding: e.target.value}))} rows={2} style={{ width: "100%", padding: "6px 10px", border: "1px solid #D1D5DB", borderRadius: 6, fontSize: 12, boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" }} placeholder="e.g. Understands SME founders, retail businesses, manufacturing operators in UAE..." />
+            </div>
+            <div style={{ gridColumn: "span 2" }}>
+              <label style={{ fontSize: 10, fontWeight: 600 }}>Connector Strength <span style={{ color: "#9CA3AF", fontWeight: 400 }}>(who this member connects well with and why they're useful in the room)</span></label>
+              <textarea value={form.connectorStrength} onChange={e => setForm(p => ({...p, connectorStrength: e.target.value}))} rows={2} style={{ width: "100%", padding: "6px 10px", border: "1px solid #D1D5DB", borderRadius: 6, fontSize: 12, boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" }} placeholder="e.g. Connects well with high-net-worth individuals, links finance to legal, known across multiple industry verticals..." />
             </div>
           </div>
           <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
