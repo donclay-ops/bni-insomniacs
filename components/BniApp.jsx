@@ -1,4 +1,10 @@
 import { useState, useEffect, useRef } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
 // ═══════════════════════════════════════════
 // REAL MEMBER DATA - BNI INSOMNIACS  (now used as INITIAL state, editable)
@@ -936,15 +942,27 @@ function VisitorsTab({ visitors, setVisitors, asks, members, archived, setArchiv
   const allDates = [...new Set(visitors.map(v => v.date))].sort().reverse();
   const printVisitors = visitors.filter(v => v.date === printDate);
 
-  const addVisitor = () => {
+  const addVisitor = async () => {
     if (!form.name || !form.business) return;
-    setVisitors(p => [...p, { ...form, id: Date.now(), status: "registered", callNotes: "", seatAssignment: "", followUpResponse: null, bio: null, validation: null }]);
+    const { data } = await supabase.from("visitors").insert([{
+      name: form.name, business: form.business, phone: form.phone,
+      email: form.email, invited_by: form.invitedBy, category: form.category,
+      specialty: form.specialty, date: form.date, status: "registered",
+      call_notes: "", seat_assignment: "", follow_up_response: null, bio: null
+    }]).select();
+    if (data?.[0]) setVisitors(p => [...p, { ...data[0], invitedBy: data[0].invited_by, callNotes: data[0].call_notes, seatAssignment: data[0].seat_assignment, followUpResponse: data[0].follow_up_response }]);
     setForm({ name: "", business: "", phone: "", email: "", invitedBy: "", category: "", specialty: "", date: "2026-04-08" });
     setShowForm(false);
   };
 
-  const updateStatus = (id, status) => setVisitors(p => p.map(v => v.id === id ? { ...v, status } : v));
-  const saveBio = (id, bio) => setVisitors(p => p.map(v => v.id === id ? { ...v, bio } : v));
+  const updateStatus = async (id, status) => {
+    await supabase.from("visitors").update({ status }).eq("id", id);
+    setVisitors(p => p.map(v => v.id === id ? { ...v, status } : v));
+  };
+  const saveBio = async (id, bio) => {
+    await supabase.from("visitors").update({ bio }).eq("id", id);
+    setVisitors(p => p.map(v => v.id === id ? { ...v, bio } : v));
+  };
   const saveValidation = (id, validation) => setVisitors(p => p.map(v => v.id === id ? { ...v, validation } : v));
 
   const startEdit = (v) => { setEditingId(v.id); setEditForm({ ...v }); setExpandedId(null); };
@@ -1382,14 +1400,23 @@ function AsksTab({ asks, setAsks, members }) {
 
   const allCategories = [...new Set(members.map(m => m.category))].sort();
 
-  const addAsk = () => {
+  const addAsk = async () => {
     const member = members.find(m => m.id === Number(form.memberId));
     if (!member) return;
-    setAsks(p => [...p, { ...form, id: Date.now(), memberId: member.id, memberName: member.name, date: new Date().toISOString().split("T")[0], status: "open" }]);
+    const { data } = await supabase.from("asks").insert([{
+      member_id: member.id, member_name: member.name, ask_type: form.askType,
+      target_name: form.targetName, target_company: form.targetCompany,
+      target_category: form.targetCategory, target_role: form.targetRole,
+      notes: form.notes, date: new Date().toISOString().split("T")[0], status: "open"
+    }]).select();
+    if (data?.[0]) setAsks(p => [...p, { ...data[0], memberId: data[0].member_id, memberName: data[0].member_name, askType: data[0].ask_type, targetName: data[0].target_name, targetCompany: data[0].target_company, targetCategory: data[0].target_category, targetRole: data[0].target_role }]);
     setForm({ memberId: "", askType: "general_role", targetName: "", targetCompany: "", targetCategory: "", targetRole: "", notes: "" });
     setShowForm(false);
   };
-  const closeAsk = (id) => setAsks(p => p.map(a => a.id === id ? { ...a, status: "fulfilled" } : a));
+  const closeAsk = async (id) => {
+    await supabase.from("asks").update({ status: "fulfilled" }).eq("id", id);
+    setAsks(p => p.map(a => a.id === id ? { ...a, status: "fulfilled" } : a));
+  };
   const doDelete = () => { setAsks(p => p.filter(a => a.id !== confirmDelete.id)); setConfirmDelete(null); };
 
   return <div>
@@ -1708,32 +1735,58 @@ function FollowUpTab({ visitors, setVisitors }) {
   </div>;
 }
 
-// ═══════════════════════════════════════════
-// MAIN APP
-// ═══════════════════════════════════════════
 export default function App() {
   const [tab, setTab] = useState(0);
-  const [visitors, setVisitors] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("bni_visitors")) || INITIAL_VISITORS; }
-    catch { return INITIAL_VISITORS; }
-  });
-  const [asks, setAsks] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("bni_asks")) || INITIAL_ASKS; }
-    catch { return INITIAL_ASKS; }
-  });
-  const [members, setMembers] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("bni_members")) || INITIAL_MEMBERS; }
-    catch { return INITIAL_MEMBERS; }
-  });
-  const [archived, setArchived] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("bni_archived")) || []; }
-    catch { return []; }
-  });
+  const [visitors, setVisitors] = useState(INITIAL_VISITORS);
+  const [asks, setAsks] = useState(INITIAL_ASKS);
+  const [members, setMembers] = useState(INITIAL_MEMBERS);
+  const [archived, setArchived] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => { localStorage.setItem("bni_visitors", JSON.stringify(visitors)); }, [visitors]);
-  useEffect(() => { localStorage.setItem("bni_asks", JSON.stringify(asks)); }, [asks]);
-  useEffect(() => { localStorage.setItem("bni_members", JSON.stringify(members)); }, [members]);
-  useEffect(() => { localStorage.setItem("bni_archived", JSON.stringify(archived)); }, [archived]);
+  // Load real data from Supabase on mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [{ data: visitorsData }, { data: asksData }] = await Promise.all([
+          supabase.from("visitors").select("*").order("id", { ascending: true }),
+          supabase.from("asks").select("*").order("id", { ascending: true }),
+        ]);
+        if (visitorsData?.length) {
+          setVisitors(visitorsData.map(v => ({
+            ...v,
+            invitedBy: v.invited_by,
+            callNotes: v.call_notes,
+            seatAssignment: v.seat_assignment,
+            followUpResponse: v.follow_up_response,
+          })));
+        }
+        if (asksData?.length) {
+          setAsks(asksData.map(a => ({
+            ...a,
+            memberId: a.member_id,
+            memberName: a.member_name,
+            askType: a.ask_type,
+            targetName: a.target_name,
+            targetCompany: a.target_company,
+            targetCategory: a.target_category,
+            targetRole: a.target_role,
+          })));
+        }
+      } catch (e) {
+        console.error("Failed to load from Supabase:", e);
+      }
+      setLoading(false);
+    };
+    loadData();
+  }, []);
+
+  if (loading) return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#F9FAFB", flexDirection: "column", gap: 12 }}>
+      <div style={{ width: 32, height: 32, border: "3px solid #8B1A1A", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      <div style={{ fontSize: 13, color: "#6B7280", fontWeight: 600 }}>Loading BNI Insomniacs...</div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
 
   const tabs = [
     <DashboardTab visitors={visitors} asks={asks} members={members} archived={archived} />,
