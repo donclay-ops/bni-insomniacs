@@ -439,6 +439,10 @@ Rules:
           messages: [{ role: "user", content: prompt }]
         })
       });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(`${response.status} — ${errData?.error?.message || response.statusText}`);
+      }
       const data = await response.json();
       const text = data.content?.[0]?.text || "";
       const clean = text.replace(/```json|```/g, "").trim();
@@ -446,7 +450,14 @@ Rules:
       setResult(parsed);
       onAnalysisSaved(visitor.id, parsed);
     } catch (e) {
-      setError("Could not analyze connections. Please try again.");
+      const msg = e?.message || String(e);
+      if (msg.includes("401") || msg.includes("auth") || msg.toLowerCase().includes("api key")) {
+        setError("API key error — check NEXT_PUBLIC_ANTHROPIC_API_KEY in Vercel settings.");
+      } else if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("CORS")) {
+        setError("Network error — CORS or connectivity issue. Check browser console for details.");
+      } else {
+        setError("Could not analyze connections: " + msg);
+      }
     }
     setLoading(false);
   };
